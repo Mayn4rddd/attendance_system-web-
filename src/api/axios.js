@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "http://192.168.101.4:5000/api",
+  baseURL: "http://192.168.101.3:5000/api",
 });
 
 api.interceptors.request.use((config) => {
@@ -9,6 +9,7 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
 
   config.headers = config.headers ?? {};
+  config.headers["Content-Type"] = "application/json";
 
   const requestUrl = typeof config.url === "string" ? config.url : "";
   const isLoginRequest = requestUrl.endsWith(loginPath) || requestUrl.includes(loginPath);

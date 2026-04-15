@@ -8,8 +8,13 @@ const AdminDashboard = () => {
   const [studentForm, setStudentForm] = useState({ studentId: "", name: "", sectionId: "", parentPhone: "" });
   const [sectionForm, setSectionForm] = useState({ name: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "" });
-  const [teacherForm, setTeacherForm] = useState({ name: "", password: "" });
-  const [assignForm, setAssignForm] = useState({ sectionId: "", teacherId: "", subjectId: "" });
+  const [teacherForm, setTeacherForm] = useState({ name: "", username: "", password: "" });
+  const [assignForm, setAssignForm] = useState({
+    sectionId: "",
+    teacherId: "",
+    subjectId: "",
+    schedules: [{ day: "", startTime: "", endTime: "" }],
+  });
   const [subjects, setSubjects] = useState([]);
   const [sections, setSections] = useState([]);
   const [teachers, setTeachers] = useState([]);
@@ -23,6 +28,22 @@ const AdminDashboard = () => {
   });
   const [status, setStatus] = useState({ message: "", error: "" });
   const [loading, setLoading] = useState(false);
+  const [editSubject, setEditSubject] = useState(null);
+  const [editSubjectName, setEditSubjectName] = useState("");
+  const [deleteSubject, setDeleteSubject] = useState(null);
+  const [deleteWithAssignmentsPrompt, setDeleteWithAssignmentsPrompt] = useState(false);
+  
+  const [editSection, setEditSection] = useState(null);
+  const [editSectionName, setEditSectionName] = useState("");
+  const [deleteSection, setDeleteSection] = useState(null);
+  
+  const [editTeacher, setEditTeacher] = useState(null);
+  const [editTeacherData, setEditTeacherData] = useState({ name: "", username: "", password: "" });
+  const [deleteTeacher, setDeleteTeacher] = useState(null);
+  
+  const [editStudent, setEditStudent] = useState(null);
+  const [editStudentData, setEditStudentData] = useState({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+  const [deleteStudent, setDeleteStudent] = useState(null);
 
   const navigationSections = useMemo(
     () => [
@@ -135,18 +156,224 @@ const AdminDashboard = () => {
 
   const handleTeacherCreate = async (event) => {
     event.preventDefault();
-    await submitForm("/admin/create-teacher", { name: teacherForm.name, password: teacherForm.password }, "Teacher created successfully.");
-    setTeacherForm({ name: "", password: "" });
+    if (!teacherForm.username.trim()) {
+      setStatus({ message: "", error: "Username is required." });
+      return;
+    }
+    await submitForm("/admin/create-teacher", { name: teacherForm.name, username: teacherForm.username, password: teacherForm.password }, "Teacher created successfully.");
+    setTeacherForm({ name: "", username: "", password: "" });
     fetchTeachers(); // Refresh the list
+  };
+
+  const addScheduleRow = () => {
+    setAssignForm((current) => {
+      if (current.schedules.length >= 3) return current;
+      return {
+        ...current,
+        schedules: [...current.schedules, { day: "", startTime: "", endTime: "" }],
+      };
+    });
+  };
+
+  const removeScheduleRow = (index) => {
+    setAssignForm((current) => {
+      if (current.schedules.length <= 1) return current;
+      return {
+        ...current,
+        schedules: current.schedules.filter((_, idx) => idx !== index),
+      };
+    });
+  };
+
+  const updateScheduleRow = (index, field, value) => {
+    setAssignForm((current) => ({
+      ...current,
+      schedules: current.schedules.map((schedule, idx) =>
+        idx === index ? { ...schedule, [field]: value } : schedule
+      ),
+    }));
   };
 
   const handleAssignTeacher = async (event) => {
     event.preventDefault();
-    await submitForm("/admin/assign-teacher-subject", {
+    const payload = {
       teacherId: Number(assignForm.teacherId),
       sectionId: Number(assignForm.sectionId),
       subjectId: Number(assignForm.subjectId),
-    }, "Teacher assigned successfully.");
+      schedules: assignForm.schedules.map((schedule) => ({
+        day: schedule.day,
+        startTime: schedule.startTime,
+        endTime: schedule.endTime,
+      })),
+    };
+    console.log("FINAL PAYLOAD:", payload);
+    await submitForm("/admin/assign-teacher-subject", payload, "Teacher assigned successfully.");
+  };
+
+  const handleEditSubject = async (event) => {
+    event?.preventDefault();
+    if (!editSubject || !editSubjectName.trim()) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.put(`/admin/subject/${editSubject.id}`, { name: editSubjectName });
+      setStatus({ message: "Subject updated successfully.", error: "" });
+      setEditSubject(null);
+      setEditSubjectName("");
+      fetchSubjects();
+    } catch (error) {
+      console.error("Update failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Update failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSubject = async (force = false) => {
+    if (!deleteSubject) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.delete(`/admin/subject/${deleteSubject.id}?force=${force}`);
+      setStatus({ message: "Subject deleted successfully.", error: "" });
+      setDeleteSubject(null);
+      setDeleteWithAssignmentsPrompt(false);
+      fetchSubjects();
+    } catch (error) {
+      console.error("Delete failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Delete failed";
+      if (errorMessage.includes("has assignments") && !force) {
+        setDeleteWithAssignmentsPrompt(true);
+      } else {
+        setStatus({ message: "", error: errorMessage });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditSection = async (event) => {
+    event?.preventDefault();
+    if (!editSection || !editSectionName.trim()) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.put(`/admin/section/${editSection.id}`, { name: editSectionName });
+      setStatus({ message: "Section updated successfully.", error: "" });
+      setEditSection(null);
+      setEditSectionName("");
+      fetchSections();
+    } catch (error) {
+      console.error("Update failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Update failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSection = async () => {
+    if (!deleteSection) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.delete(`/admin/section/${deleteSection.id}`);
+      setStatus({ message: "Section deleted successfully.", error: "" });
+      setDeleteSection(null);
+      fetchSections();
+    } catch (error) {
+      console.error("Delete failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Delete failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditTeacher = async (event) => {
+    event?.preventDefault();
+    if (!editTeacher || !editTeacherData.name.trim()) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.put(`/admin/teacher/${editTeacher.id}`, {
+        name: editTeacherData.name,
+        username: editTeacherData.username,
+        password: editTeacherData.password,
+      });
+      setStatus({ message: "Teacher updated successfully.", error: "" });
+      setEditTeacher(null);
+      setEditTeacherData({ name: "", username: "", password: "" });
+      fetchTeachers();
+    } catch (error) {
+      console.error("Update failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Update failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteTeacher = async () => {
+    if (!deleteTeacher) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.delete(`/admin/teacher/${deleteTeacher.id}`);
+      setStatus({ message: "Teacher deleted successfully.", error: "" });
+      setDeleteTeacher(null);
+      fetchTeachers();
+    } catch (error) {
+      console.error("Delete failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Delete failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditStudent = async (event) => {
+    event?.preventDefault();
+    if (!editStudent || !editStudentData.name.trim()) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.put(`/admin/student/${editStudent.id}`, {
+        studentId: editStudentData.studentId,
+        name: editStudentData.name,
+        sectionId: Number(editStudentData.sectionId),
+        parentPhone: editStudentData.parentPhone,
+      });
+      setStatus({ message: "Student updated successfully.", error: "" });
+      setEditStudent(null);
+      setEditStudentData({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+      fetchStudents();
+    } catch (error) {
+      console.error("Update failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Update failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!deleteStudent) return;
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.delete(`/admin/student/${deleteStudent.id}`);
+      setStatus({ message: "Student deleted successfully.", error: "" });
+      setDeleteStudent(null);
+      fetchStudents();
+    } catch (error) {
+      console.error("Delete failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Delete failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -294,7 +521,7 @@ const AdminDashboard = () => {
                   onClick={fetchStudents}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                 >
-                  🔄 Refresh
+                   Refresh
                 </button>
               </div>
               {students.length === 0 ? (
@@ -313,14 +540,18 @@ const AdminDashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                      {students.map((student) => (
-                        <tr key={student.id} className="transition hover:bg-slate-50">
-                          <td className="px-6 py-4 text-slate-900">{student.studentId}</td>
-                          <td className="px-6 py-4 text-slate-900">{student.name}</td>
-                          <td className="px-6 py-4 text-slate-600">{student.sectionName || student.section || 'N/A'}</td>
-                          <td className="px-6 py-4 text-slate-600">{student.parentPhone || 'N/A'}</td>
-                        </tr>
-                      ))}
+                     {students.map((student) => (
+  <tr key={student.studentId} className="transition hover:bg-slate-50">
+    <td className="px-6 py-4 text-slate-900">{student.studentId}</td>
+    <td className="px-6 py-4 text-slate-900">{student.studentName}</td>
+    <td className="px-6 py-4 text-slate-600">
+      {student.section || 'N/A'}
+    </td>
+    <td className="px-6 py-4 text-slate-600">
+      {student.parentPhone || 'N/A'}
+    </td>
+  </tr>
+))}
                     </tbody>
                   </table>
                 </div>
@@ -338,7 +569,7 @@ const AdminDashboard = () => {
                 onClick={fetchSections}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                🔄 Refresh
+                 Refresh
               </button>
             </div>
             <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleSectionCreate}>
@@ -403,7 +634,7 @@ const AdminDashboard = () => {
                 onClick={fetchSubjects}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                🔄 Refresh
+                 Refresh
               </button>
             </div>
             <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleSubjectCreate}>
@@ -442,6 +673,7 @@ const AdminDashboard = () => {
                       <tr className="border-b border-slate-200">
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Subject ID</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Name</th>
+                        <th className="px-6 py-4 text-left font-semibold text-slate-900">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
@@ -449,6 +681,28 @@ const AdminDashboard = () => {
                         <tr key={subject.id} className="transition hover:bg-slate-50">
                           <td className="px-6 py-4 text-slate-900">{subject.id}</td>
                           <td className="px-6 py-4 text-slate-900">{subject.name}</td>
+                          <td className="px-6 py-4 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditSubject(subject);
+                                setEditSubjectName(subject.name);
+                              }}
+                              className="rounded-lg bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-200"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteSubject(subject);
+                                setDeleteWithAssignmentsPrompt(false);
+                              }}
+                              className="rounded-lg bg-rose-100 px-3 py-1 text-sm font-medium text-rose-700 transition hover:bg-rose-200"
+                            >
+                              Delete
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -468,7 +722,7 @@ const AdminDashboard = () => {
                 onClick={fetchTeachers}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                🔄 Refresh
+                 Refresh
               </button>
             </div>
             <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleTeacherCreate}>
@@ -478,6 +732,16 @@ const AdminDashboard = () => {
                   type="text"
                   value={teacherForm.name}
                   onChange={(e) => setTeacherForm((current) => ({ ...current, name: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  required
+                />
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Username</span>
+                <input
+                  type="text"
+                  value={teacherForm.username}
+                  onChange={(e) => setTeacherForm((current) => ({ ...current, username: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 />
@@ -584,6 +848,76 @@ const AdminDashboard = () => {
                   ))}
                 </select>
               </label>
+              <div className="sm:col-span-2 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <span className="text-sm font-medium text-slate-700">Schedules</span>
+                  <button
+                    type="button"
+                    onClick={addScheduleRow}
+                    disabled={assignForm.schedules.length >= 3}
+                    className="rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-800 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:bg-slate-200"
+                  >
+                    Add Schedule
+                  </button>
+                </div>
+
+                {/* Labels Header Row */}
+                <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr auto", gap: "12px" }}>
+                  <div>
+                    <span className="text-sm font-medium text-slate-700">Day</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-slate-700">Start Time</span>
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-slate-700">End Time</span>
+                  </div>
+                  <div></div>
+                </div>
+
+                {/* Schedule Rows */}
+                {assignForm.schedules.map((schedule, index) => (
+                  <div key={index} style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 1fr auto", gap: "12px", alignItems: "center" }}>
+                    <select
+                      value={schedule.day}
+                      onChange={(e) => updateScheduleRow(index, "day", e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      required
+                    >
+                      <option value="">-- Select Day --</option>
+                      <option value="Monday">Monday</option>
+                      <option value="Tuesday">Tuesday</option>
+                      <option value="Wednesday">Wednesday</option>
+                      <option value="Thursday">Thursday</option>
+                      <option value="Friday">Friday</option>
+                      <option value="Saturday">Saturday</option>
+                      <option value="Sunday">Sunday</option>
+                    </select>
+                    <input
+                      type="time"
+                      value={schedule.startTime}
+                      onChange={(e) => updateScheduleRow(index, "startTime", e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      required
+                    />
+                    <input
+                      type="time"
+                      value={schedule.endTime}
+                      onChange={(e) => updateScheduleRow(index, "endTime", e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      required
+                    />
+                    <button
+                      type="button"
+                      disabled={assignForm.schedules.length <= 1}
+                      onClick={() => removeScheduleRow(index)}
+                      className="h-12 rounded-2xl bg-rose-100 px-4 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:cursor-not-allowed disabled:bg-slate-200"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
               <div className="sm:col-span-2">
                 <button
                   type="submit"
@@ -597,6 +931,110 @@ const AdminDashboard = () => {
           </section>
         </main>
       </div>
+
+      {/* Edit Subject Modal */}
+      {editSubject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+            <h3 className="text-xl font-semibold text-slate-900">Edit Subject</h3>
+            <form onSubmit={handleEditSubject}>
+              <label className="mt-4 block">
+                <span className="text-sm font-medium text-slate-700">Subject Name</span>
+                <input
+                  type="text"
+                  value={editSubjectName}
+                  onChange={(e) => setEditSubjectName(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  required
+                />
+              </label>
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="submit"
+                  disabled={loading || !editSubjectName.trim()}
+                  className="flex-1 rounded-2xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:bg-slate-400"
+                >
+                  {loading ? "Saving..." : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditSubject(null);
+                    setEditSubjectName("");
+                  }}
+                  disabled={loading}
+                  className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Subject Confirmation Dialog */}
+      {deleteSubject && !deleteWithAssignmentsPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+            <h3 className="text-xl font-semibold text-slate-900">Delete Subject</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete "{deleteSubject.name}"?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteSubject(false)}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-rose-100 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:bg-slate-200"
+              >
+                {loading ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteSubject(null)}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete with Assignments Confirmation Dialog */}
+      {deleteSubject && deleteWithAssignmentsPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+            <h3 className="text-xl font-semibold text-slate-900">Subject Has Assignments</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              This subject has assignments. Do you want to delete it along with all assignments?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteSubject(true)}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-rose-100 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:bg-slate-200"
+              >
+                {loading ? "Deleting..." : "Delete with Assignments"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteSubject(null);
+                  setDeleteWithAssignmentsPrompt(false);
+                }}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -14,6 +14,7 @@ const SectionDetails = () => {
   const [selectedDate, setSelectedDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState({ message: "", error: "" });
+  const [recentlyChanged, setRecentlyChanged] = useState(new Set());
 
   const links = useMemo(
     () => [
@@ -50,10 +51,28 @@ const SectionDetails = () => {
           url += `&date=${selectedDate}`;
         }
         const response = await api.get(url);
-       const data = response.data ?? [];
+        const data = response.data ?? [];
 
-setAllStudents(data);
-setActiveStudents(data.filter(s => s.status === "Present"));
+        // Track students who changed status
+        const previousStatuses = new Map(allStudents.map(s => [s.id ?? s.studentId, s.status]));
+        const changedStudents = new Set();
+        
+        data.forEach(student => {
+          const prevStatus = previousStatuses.get(student.id ?? student.studentId);
+          if (prevStatus && prevStatus !== student.status) {
+            changedStudents.add(student.id ?? student.studentId);
+          }
+        });
+
+        setAllStudents(data);
+        setActiveStudents(data.filter(s => s.status === "Present"));
+        setRecentlyChanged(changedStudents);
+        
+        // Clear highlight after 2 seconds
+        if (changedStudents.size > 0) {
+          setTimeout(() => setRecentlyChanged(new Set()), 2000);
+        }
+        
         setStatus({ message: "", error: "" });
       } catch (error) {
         console.error("Unable to fetch students:", error);
@@ -65,8 +84,15 @@ setActiveStudents(data.filter(s => s.status === "Present"));
       }
     };
 
+    // Initial fetch
     fetchSectionStudents();
-  }, [user, sectionId, selectedDate]);
+    
+    // Auto-refresh every 3 seconds
+    const refreshInterval = setInterval(fetchSectionStudents, 3000);
+    
+    // Cleanup interval on unmount or when dependencies change
+    return () => clearInterval(refreshInterval);
+  }, [user, sectionId, selectedDate, allStudents]);
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -96,9 +122,15 @@ setActiveStudents(data.filter(s => s.status === "Present"));
 
           <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-900">📋 All Students</h2>
-                <p className="mt-1 text-sm text-slate-600">All students in this section.</p>
+              <div className="flex items-center gap-3">
+                <div>
+                  <h2 className="text-2xl font-semibold text-slate-900">📋 All Students</h2>
+                  <p className="mt-1 text-sm text-slate-600">All students in this section.</p>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 ring-1 ring-emerald-200">
+                  <span className="flex h-2 w-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                  <span className="text-xs font-medium text-emerald-700">Live</span>
+                </div>
               </div>
               <div className="flex gap-4">
                 <label className="flex flex-col">
@@ -138,8 +170,14 @@ setActiveStudents(data.filter(s => s.status === "Present"));
                     <tbody className="divide-y divide-slate-200">
                       {allStudents.map((student) => {
                         const date = student.date ? new Date(student.date) : null;
+                        const studentId = student.id ?? student.studentId;
+                        const isRecentlyChanged = recentlyChanged.has(studentId);
+                        
                         return (
-                          <tr key={student.id ?? student.studentId}>
+                          <tr 
+                            key={studentId}
+                            className={`transition ${isRecentlyChanged ? 'animate-pulse bg-emerald-100' : ''}`}
+                          >
                             <td className="px-6 py-4 text-slate-800 font-medium">
                               {student.name ?? student.studentName}
                             </td>

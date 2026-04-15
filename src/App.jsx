@@ -5,6 +5,8 @@ import Login from "./pages/Login";
 import SectionDetails from "./pages/SectionDetails";
 import StudentDashboard from "./pages/StudentDashboard";
 import TeacherDashboard from "./pages/TeacherDashboard";
+import Masterlisz from "./pages/Masterlisz";
+import MasterliszStudents from "./pages/MasterliszStudents";
 
 const PrivateRoute = ({ children, allowedRole }) => {
   const { user, loading } = useAuth();
@@ -31,7 +33,10 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/admin" element={<PrivateRoute allowedRole="Admin"><AdminDashboard /></PrivateRoute>} />
-          <Route path="/teacher" element={<PrivateRoute allowedRole="Teacher"><TeacherDashboard /></PrivateRoute>} />
+          <Route path="/teacher" element={<Navigate to="/teacher/dashboard" replace />} />
+          <Route path="/teacher/dashboard" element={<PrivateRoute allowedRole="Teacher"><TeacherDashboard /></PrivateRoute>} />
+          <Route path="/teacher/masterlist" element={<PrivateRoute allowedRole="Teacher"><Masterlisz /></PrivateRoute>} />
+          <Route path="/teacher/masterlist/:sectionId" element={<PrivateRoute allowedRole="Teacher"><MasterliszStudents /></PrivateRoute>} />
           <Route path="/section/:sectionId" element={<PrivateRoute allowedRole="Teacher"><SectionDetails /></PrivateRoute>} />
           <Route path="/student" element={<PrivateRoute allowedRole="Student"><StudentDashboard /></PrivateRoute>} />
           <Route path="/" element={<Navigate to="/login" replace />} />

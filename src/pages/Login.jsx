@@ -6,7 +6,7 @@
     const Login = () => {
     const navigate = useNavigate();
     const { login, user } = useAuth();
-    const [form, setForm] = useState({ name: "", password: "" });
+    const [form, setForm] = useState({ username: "", password: "" });
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -26,7 +26,7 @@
 
     try {
         const response = await api.post("/auth/web-login", {
-  name: form.name,
+  username: form.username,
   password: form.password,
 });
 
@@ -65,11 +65,11 @@
 
             <form className="space-y-4" onSubmit={handleSubmit}>
             <label className="block">
-                <span className="text-sm font-medium text-slate-700">Name</span>
+                <span className="text-sm font-medium text-slate-700">Username</span>
                 <input
-                name="name"
+                name="username"
                 type="text"
-                value={form.name}
+                value={form.username}
                 onChange={handleChange}
                 required
                 className="mt-2 block w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
