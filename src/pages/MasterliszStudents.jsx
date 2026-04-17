@@ -10,6 +10,8 @@ const MasterliszStudents = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const section = location.state?.section;
+  const teacherId = location.state?.teacherId;
+  const subjectIdFromState = location.state?.subjectId;
   const { user } = useAuth();
   const [students, setStudents] = useState([]);
   const [gridData, setGridData] = useState({ dates: [], students: [] });
@@ -31,9 +33,21 @@ const MasterliszStudents = () => {
   // Reusable fetch function
   const fetchMasterlist = async () => {
     if (!sectionId) return;
+    
+    // Use values from state, fallback to direct access, but teacherId must be from state
+    const subjectId = subjectIdFromState ?? section?.subjectId ?? section?.subject?.id;
+    
+    if (!sectionId || !subjectId || !teacherId) {
+      console.error("Missing required parameters:", { sectionId, subjectId, teacherId });
+      setStatus({ message: "", error: "Section ID, Subject ID, or Teacher ID is missing. Please navigate from the masterlist page." });
+      return;
+    }
+    
     setIsRefreshing(true);
     try {
-      const response = await api.get(`/teacher/masterlist?sectionId=${sectionId}`);
+      const response = await api.get(
+        `/teacher/masterlist?sectionId=${sectionId}&subjectId=${subjectId}&teacherId=${teacherId}`
+      );
       console.log("Masterlist response:", response.data);
       
       // Extract students array from response
@@ -62,25 +76,20 @@ const MasterliszStudents = () => {
   const fetchGridData = async (start, end) => {
     if (!sectionId) return;
     
-    // Get teacherId from authenticated user
-    if (!user?.userId) {
-      console.error("Teacher ID (userId) is missing");
-      setStatus({ message: "", error: "Teacher ID is missing. Please log in again." });
-      return;
-    }
+    // Get subjectId from state or section data
+    const subjectId = subjectIdFromState ?? section?.subjectId ?? section?.subject?.id;
     
-    // Get subjectId from section data
-    const subjectId = section?.subjectId ?? section?.subject?.id;
-    if (!subjectId) {
-      console.error("Subject ID is missing");
-      setStatus({ message: "", error: "Subject ID is missing for this section." });
+    // Safety checks for required parameters
+    if (!sectionId || !subjectId || !teacherId) {
+      console.error("Missing required parameters:", { sectionId, subjectId, teacherId });
+      setStatus({ message: "", error: "Section ID, Subject ID, or Teacher ID is missing. Please navigate from the masterlist page." });
       return;
     }
     
     setGridLoading(true);
     try {
       const response = await api.get(
-        `/teacher/masterlist-grid?sectionId=${sectionId}&subjectId=${subjectId}&teacherId=${user.userId}&startDate=${start}&endDate=${end}`
+        `/teacher/masterlist-grid?sectionId=${sectionId}&subjectId=${subjectId}&teacherId=${teacherId}&startDate=${start}&endDate=${end}`
       );
       console.log("Grid data response:", response.data);
       
@@ -108,9 +117,20 @@ const MasterliszStudents = () => {
   useEffect(() => {
     const initialFetch = async () => {
       if (!sectionId) return;
+      
+      const subjectId = subjectIdFromState ?? section?.subjectId ?? section?.subject?.id;
+      
+      if (!sectionId || !subjectId || !teacherId) {
+        console.error("Missing required parameters:", { sectionId, subjectId, teacherId });
+        setStatus({ message: "", error: "Section ID, Subject ID, or Teacher ID is missing. Please navigate from the masterlist page." });
+        return;
+      }
+      
       setLoading(true);
       try {
-        const response = await api.get(`/teacher/masterlist?sectionId=${sectionId}`);
+        const response = await api.get(
+          `/teacher/masterlist?sectionId=${sectionId}&subjectId=${subjectId}&teacherId=${teacherId}`
+        );
         console.log("Masterlist response:", response.data);
         
         // Extract students array from response
@@ -135,14 +155,16 @@ const MasterliszStudents = () => {
       }
     };
     initialFetch();
-  }, [sectionId]);
+  }, [sectionId, section, teacherId, subjectIdFromState]);
 
   // Fetch grid data when view mode changes to grid
   useEffect(() => {
-    if (viewMode === "grid" && user?.userId) {
-      fetchGridData(startDate, endDate);
-    }
-  }, [viewMode, startDate, endDate, user?.userId]);
+  const subjectId = subjectIdFromState ?? section?.subjectId ?? section?.subject?.id;
+
+  if (viewMode === "grid" && teacherId && subjectId) {
+    fetchGridData(startDate, endDate);
+  }
+}, [viewMode, startDate, endDate, teacherId, subjectIdFromState, section]);
 
   // Fallback section name if API doesn't provide it
   const displaySectionName = sectionName || (section?.section ?? section?.name ?? `Section ${sectionId}`);
@@ -347,16 +369,25 @@ const MasterliszStudents = () => {
                             // Get attendance status for this date from records object
                             const status = student.records?.[date] || "";
                             
-                            // Convert status to single letter with icon
+                            // ✅ FIXED: Properly handle status codes and empty values
+                            // Backend returns: "P" (Present), "L" (Late), "A" (Absent), "" (No class/empty)
                             let displayValue = "";
                             let bgColor = "bg-white";
-                            if (status.toLowerCase() === "present") {
+                            
+                            if (!status || status === "") {
+                              // No class day or empty status - NOT Absent
+                              displayValue = "—";
+                              bgColor = "bg-gray-50";
+                            } else if (status === "P") {
+                              // Present
                               displayValue = "✓ P";
                               bgColor = "bg-emerald-50";
-                            } else if (status.toLowerCase() === "late") {
+                            } else if (status === "L") {
+                              // Late
                               displayValue = "⏱ L";
                               bgColor = "bg-amber-50";
-                            } else if (status.toLowerCase() === "absent") {
+                            } else if (status === "A") {
+                              // Absent
                               displayValue = "✕ A";
                               bgColor = "bg-rose-50";
                             }
@@ -366,7 +397,7 @@ const MasterliszStudents = () => {
                                 key={dateIdx}
                                 className={`border border-gray-200 px-2 py-3 text-center text-sm font-semibold text-slate-900 ${bgColor}`}
                               >
-                                {displayValue || "—"}
+                                {displayValue}
                               </td>
                             );
                           })}

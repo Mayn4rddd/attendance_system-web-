@@ -17,28 +17,55 @@ const Masterlisz = () => {
     { id: "masterlist", label: "Masterlist" },
   ];
 
+  // Reusable function to fetch sections
+  const fetchSections = async () => {
+    if (!user?.userId) return;
+    setSectionsLoading(true);
+    try {
+      const response = await api.get(`/teacher/my-sections?userId=${user.userId}`);
+      const sectionsData = response.data || [];
+      setSections(sectionsData);
+      setStatus({ message: "", error: "" });
+      console.log("Sections fetched successfully:", sectionsData);
+    } catch (error) {
+      console.error("Failed to fetch sections:", error);
+      setStatus({ message: "", error: "Unable to fetch sections." });
+    } finally {
+      setSectionsLoading(false);
+    }
+  };
+
+  // Fetch sections on component mount
   useEffect(() => {
-    const fetchSections = async () => {
-      if (!user?.userId) return;
-      setSectionsLoading(true);
-      try {
-        const response = await api.get(`/teacher/my-sections?userId=${user.userId}`);
-        const sectionsData = response.data || [];
-        setSections(sectionsData);
-        setStatus({ message: "", error: "" });
-      } catch (error) {
-        console.error("Failed to fetch sections:", error);
-        setStatus({ message: "", error: "Unable to fetch sections." });
-      } finally {
-        setSectionsLoading(false);
-      }
-    };
     fetchSections();
   }, [user]);
 
+  // Refetch sections when user returns to the page (window focus)
+  useEffect(() => {
+    const handleWindowFocus = () => {
+      console.log("Page regained focus - refetching sections");
+      fetchSections();
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    return () => window.removeEventListener("focus", handleWindowFocus);
+  }, [user?.userId]);
+
   const handleSectionClick = (section) => {
     const sectionId = section.id ?? section.sectionId;
-    navigate(`/teacher/masterlist/${sectionId}`, { state: { section } });
+    const subjectId = section.subjectId ?? section.subject?.id;
+    const teacherId = section.teacherId ?? section.teacher?.id;
+    
+    console.log("Navigating to section:", { sectionId, subjectId, teacherId });
+    
+    navigate(`/teacher/masterlist/${sectionId}`, { 
+      state: { 
+        section,
+        sectionId,
+        subjectId,
+        teacherId
+      } 
+    });
   };
 
   const handleSidebarNav = (id) => {
@@ -79,8 +106,20 @@ const Masterlisz = () => {
 
         <main className="flex-1 space-y-6">
           <header className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <h1 className="text-3xl font-semibold">Masterlist</h1>
-            <p className="mt-2 text-sm text-slate-600">Select a section to view student masterlist.</p>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h1 className="text-3xl font-semibold">Masterlist</h1>
+                <p className="mt-2 text-sm text-slate-600">Select a section to view student masterlist.</p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchSections}
+                disabled={sectionsLoading}
+                className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-400 disabled:cursor-not-allowed"
+              >
+                {sectionsLoading ? "🔄 Refreshing..." : "🔄 Refresh"}
+              </button>
+            </div>
           </header>
 
           {status.error && <div className="rounded-3xl bg-rose-50 p-4 text-rose-700 ring-1 ring-rose-200">{status.error}</div>}

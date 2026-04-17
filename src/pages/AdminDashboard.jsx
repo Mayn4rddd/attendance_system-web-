@@ -149,9 +149,20 @@ const AdminDashboard = () => {
 
   const handleSectionCreate = async (event) => {
     event.preventDefault();
-    await submitForm("/admin/create-section", { name: sectionForm.name }, "Section created successfully.");
-    setSectionForm({ name: "" });
-    fetchSections(); // Refresh the list
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+    try {
+      await api.post("/admin/create-section", { name: sectionForm.name });
+      setStatus({ message: "Section created successfully.", error: "" });
+      setSectionForm({ name: "" });
+      fetchSections(); // Refresh the list
+    } catch (error) {
+      console.error("Create failed:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Create failed";
+      setStatus({ message: "", error: errorMessage });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleTeacherCreate = async (event) => {
@@ -297,11 +308,15 @@ const AdminDashboard = () => {
     setLoading(true);
     setStatus({ message: "", error: "" });
     try {
-      await api.put(`/admin/teacher/${editTeacher.id}`, {
+      const payload = {
         name: editTeacherData.name,
         username: editTeacherData.username,
-        password: editTeacherData.password,
-      });
+      };
+      // Only include password if it's not empty
+      if (editTeacherData.password.trim()) {
+        payload.password = editTeacherData.password;
+      }
+      await api.put(`/admin/teacher/${editTeacher.id}`, payload);
       setStatus({ message: "Teacher updated successfully.", error: "" });
       setEditTeacher(null);
       setEditTeacherData({ name: "", username: "", password: "" });
@@ -453,14 +468,14 @@ const AdminDashboard = () => {
           )}
 
           <section id="students" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <h2 className="text-2xl font-semibold">Add Student</h2>
-            <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleStudentCreate}>
+            <h2 className="text-2xl font-semibold">{editStudent ? "Edit Student" : "Add Student"}</h2>
+            <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={editStudent ? handleEditStudent : handleStudentCreate}>
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Student ID</span>
                 <input
                   type="text"
-                  value={studentForm.studentId}
-                  onChange={(e) => setStudentForm((current) => ({ ...current, studentId: e.target.value }))}
+                  value={editStudent ? editStudentData.studentId : studentForm.studentId}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, studentId: e.target.value })) : setStudentForm((current) => ({ ...current, studentId: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 />
@@ -469,8 +484,8 @@ const AdminDashboard = () => {
                 <span className="text-sm font-medium text-slate-700">Name</span>
                 <input
                   type="text"
-                  value={studentForm.name}
-                  onChange={(e) => setStudentForm((current) => ({ ...current, name: e.target.value }))}
+                  value={editStudent ? editStudentData.name : studentForm.name}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, name: e.target.value })) : setStudentForm((current) => ({ ...current, name: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 />
@@ -478,8 +493,8 @@ const AdminDashboard = () => {
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Section</span>
                 <select
-                  value={studentForm.sectionId}
-                  onChange={(e) => setStudentForm((current) => ({ ...current, sectionId: e.target.value }))}
+                  value={editStudent ? editStudentData.sectionId : studentForm.sectionId}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, sectionId: e.target.value })) : setStudentForm((current) => ({ ...current, sectionId: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 >
@@ -495,20 +510,32 @@ const AdminDashboard = () => {
                 <span className="text-sm font-medium text-slate-700">Parent Phone</span>
                 <input
                   type="text"
-                  value={studentForm.parentPhone}
-                  onChange={(e) => setStudentForm((current) => ({ ...current, parentPhone: e.target.value }))}
+                  value={editStudent ? editStudentData.parentPhone : studentForm.parentPhone}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, parentPhone: e.target.value })) : setStudentForm((current) => ({ ...current, parentPhone: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 />
               </label>
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 flex gap-2">
                 <button
                   type="submit"
                   disabled={loading}
                   className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400"
                 >
-                  {loading ? "Saving..." : "Create Student"}
+                  {loading ? "Saving..." : editStudent ? "Update Student" : "Create Student"}
                 </button>
+                {editStudent && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditStudent(null);
+                      setEditStudentData({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+                    }}
+                    className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             </form>
 
@@ -537,18 +564,45 @@ const AdminDashboard = () => {
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Name</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Section</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Parent Phone</th>
+                        <th className="px-6 py-4 text-left font-semibold text-slate-900">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
                      {students.map((student) => (
   <tr key={student.studentId} className="transition hover:bg-slate-50">
     <td className="px-6 py-4 text-slate-900">{student.studentId}</td>
-    <td className="px-6 py-4 text-slate-900">{student.studentName}</td>
+    <td className="px-6 py-4 text-slate-900">{student.name}</td>
     <td className="px-6 py-4 text-slate-600">
       {student.section || 'N/A'}
     </td>
     <td className="px-6 py-4 text-slate-600">
       {student.parentPhone || 'N/A'}
+    </td>
+    <td className="px-6 py-4">
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setEditStudent(student);
+            setEditStudentData({
+              studentId: student.studentId,
+              name: student.name,
+              sectionId: student.sectionId || "",
+              parentPhone: student.parentPhone,
+            });
+          }}
+          className="rounded-lg bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-200"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          onClick={() => setDeleteStudent(student)}
+          className="rounded-lg bg-red-100 px-3 py-1 text-sm font-medium text-red-700 transition hover:bg-red-200"
+        >
+          Delete
+        </button>
+      </div>
     </td>
   </tr>
 ))}
@@ -561,36 +615,46 @@ const AdminDashboard = () => {
 
           <section id="sections" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-semibold">Create Section</h2>
-              </div>
+              <h2 className="text-2xl font-semibold">{editSection ? "Edit Section" : "Create Section"}</h2>
               <button
                 type="button"
                 onClick={fetchSections}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                 Refresh
+                Refresh
               </button>
             </div>
-            <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleSectionCreate}>
+            <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={editSection ? handleEditSection : handleSectionCreate}>
               <label className="block sm:col-span-2">
                 <span className="text-sm font-medium text-slate-700">Section Name</span>
                 <input
                   type="text"
-                  value={sectionForm.name}
-                  onChange={(e) => setSectionForm({ name: e.target.value })}
+                  value={editSection ? editSectionName : sectionForm.name}
+                  onChange={(e) => editSection ? setEditSectionName(e.target.value) : setSectionForm({ name: e.target.value })}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 />
               </label>
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 flex gap-2">
                 <button
                   type="submit"
                   disabled={loading}
                   className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400"
                 >
-                  {loading ? "Saving..." : "Create Section"}
+                  {loading ? "Saving..." : editSection ? "Update Section" : "Create Section"}
                 </button>
+                {editSection && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditSection(null);
+                      setEditSectionName("");
+                    }}
+                    className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             </form>
 
@@ -608,6 +672,7 @@ const AdminDashboard = () => {
                       <tr className="border-b border-slate-200">
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Section ID</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Name</th>
+                        <th className="px-6 py-4 text-left font-semibold text-slate-900">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
@@ -615,6 +680,29 @@ const AdminDashboard = () => {
                         <tr key={section.id} className="transition hover:bg-slate-50">
                           <td className="px-6 py-4 text-slate-900">{section.id}</td>
                           <td className="px-6 py-4 text-slate-900">{section.name}</td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditSection(section);
+                                  setEditSectionName(section.name);
+                                  // Scroll to section form
+                                  document.getElementById("sections")?.scrollIntoView({ behavior: "smooth" });
+                                }}
+                                className="rounded-lg bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-200"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteSection(section)}
+                                className="rounded-lg bg-red-100 px-3 py-1 text-sm font-medium text-red-700 transition hover:bg-red-200"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -714,24 +802,22 @@ const AdminDashboard = () => {
 
           <section id="teachers" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-semibold">Create Teacher</h2>
-              </div>
+              <h2 className="text-2xl font-semibold">{editTeacher ? "Edit Teacher" : "Create Teacher"}</h2>
               <button
                 type="button"
                 onClick={fetchTeachers}
                 className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
-                 Refresh
+                Refresh
               </button>
             </div>
-            <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleTeacherCreate}>
+            <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={editTeacher ? handleEditTeacher : handleTeacherCreate}>
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Name</span>
                 <input
                   type="text"
-                  value={teacherForm.name}
-                  onChange={(e) => setTeacherForm((current) => ({ ...current, name: e.target.value }))}
+                  value={editTeacher ? editTeacherData.name : teacherForm.name}
+                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, name: e.target.value })) : setTeacherForm((current) => ({ ...current, name: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 />
@@ -740,36 +826,57 @@ const AdminDashboard = () => {
                 <span className="text-sm font-medium text-slate-700">Username</span>
                 <input
                   type="text"
-                  value={teacherForm.username}
-                  onChange={(e) => setTeacherForm((current) => ({ ...current, username: e.target.value }))}
+                  value={editTeacher ? editTeacherData.username : teacherForm.username}
+                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, username: e.target.value })) : setTeacherForm((current) => ({ ...current, username: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                   required
                 />
               </label>
               <label className="block">
-                <span className="text-sm font-medium text-slate-700">Password</span>
+                <span className="text-sm font-medium text-slate-700">{editTeacher ? "Password (leave empty to keep current)" : "Password"}</span>
                 <input
                   type="password"
-                  value={teacherForm.password}
-                  onChange={(e) => setTeacherForm((current) => ({ ...current, password: e.target.value }))}
+                  value={editTeacher ? editTeacherData.password : teacherForm.password}
+                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, password: e.target.value })) : setTeacherForm((current) => ({ ...current, password: e.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required
+                  required={!editTeacher}
                 />
               </label>
-              <div className="sm:col-span-2">
+              <div className="sm:col-span-2 flex gap-2">
                 <button
                   type="submit"
                   disabled={loading}
                   className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400"
                 >
-                  {loading ? "Saving..." : "Create Teacher"}
+                  {loading ? "Saving..." : editTeacher ? "Update Teacher" : "Create Teacher"}
                 </button>
+                {editTeacher && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditTeacher(null);
+                      setEditTeacherData({ name: "", username: "", password: "" });
+                    }}
+                    className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             </form>
 
             {/* Teachers Data Table */}
             <div className="mt-8">
-              <h3 className="text-lg font-semibold">Existing Teachers</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Existing Teachers</h3>
+                <button
+                  type="button"
+                  onClick={fetchTeachers}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                >
+                  Refresh
+                </button>
+              </div>
               {teachers.length === 0 ? (
                 <div className="mt-4">
                   <EmptyState icon="👨‍🏫" title="No Teachers" description="Create teachers and assign them to sections." />
@@ -781,6 +888,7 @@ const AdminDashboard = () => {
                       <tr className="border-b border-slate-200">
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Teacher ID</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Name</th>
+                        <th className="px-6 py-4 text-left font-semibold text-slate-900">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
@@ -788,6 +896,31 @@ const AdminDashboard = () => {
                         <tr key={teacher.id} className="transition hover:bg-slate-50">
                           <td className="px-6 py-4 text-slate-900">{teacher.id}</td>
                           <td className="px-6 py-4 text-slate-900">{teacher.name}</td>
+                          <td className="px-6 py-4">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditTeacher(teacher);
+                                  setEditTeacherData({
+                                    name: teacher.name,
+                                    username: teacher.username || "",
+                                    password: "",
+                                  });
+                                }}
+                                className="rounded-lg bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-200"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTeacher(teacher)}
+                                className="rounded-lg bg-red-100 px-3 py-1 text-sm font-medium text-red-700 transition hover:bg-red-200"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -932,6 +1065,37 @@ const AdminDashboard = () => {
         </main>
       </div>
 
+      {/* Edit Section Modal - NOT USED (inline form above) */}
+      {/* Delete Section Confirmation Dialog */}
+      {deleteSection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+            <h3 className="text-xl font-semibold text-slate-900">Delete Section</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete "{deleteSection.name}"?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteSection()}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-rose-100 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:bg-slate-200"
+              >
+                {loading ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteSection(null)}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Subject Modal */}
       {editSubject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
@@ -1026,6 +1190,126 @@ const AdminDashboard = () => {
                   setDeleteSubject(null);
                   setDeleteWithAssignmentsPrompt(false);
                 }}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Teacher Modal */}
+      {editTeacher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+            <h3 className="text-xl font-semibold text-slate-900">Edit Teacher</h3>
+            <form onSubmit={handleEditTeacher}>
+              <label className="mt-4 block">
+                <span className="text-sm font-medium text-slate-700">Name</span>
+                <input
+                  type="text"
+                  value={editTeacherData.name}
+                  onChange={(e) => setEditTeacherData((current) => ({ ...current, name: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  required
+                />
+              </label>
+              <label className="mt-4 block">
+                <span className="text-sm font-medium text-slate-700">Username</span>
+                <input
+                  type="text"
+                  value={editTeacherData.username}
+                  onChange={(e) => setEditTeacherData((current) => ({ ...current, username: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  required
+                />
+              </label>
+              <label className="mt-4 block">
+                <span className="text-sm font-medium text-slate-700">Password (leave empty to keep current)</span>
+                <input
+                  type="password"
+                  value={editTeacherData.password}
+                  onChange={(e) => setEditTeacherData((current) => ({ ...current, password: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                />
+              </label>
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="submit"
+                  disabled={loading || !editTeacherData.name.trim()}
+                  className="flex-1 rounded-2xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:bg-slate-400"
+                >
+                  {loading ? "Saving..." : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTeacher(null);
+                    setEditTeacherData({ name: "", username: "", password: "" });
+                  }}
+                  disabled={loading}
+                  className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Teacher Confirmation Dialog */}
+      {deleteTeacher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+            <h3 className="text-xl font-semibold text-slate-900">Delete Teacher</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete "{deleteTeacher.name}"?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteTeacher()}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-rose-100 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:bg-slate-200"
+              >
+                {loading ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteTeacher(null)}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Student Confirmation Dialog */}
+      {deleteStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+            <h3 className="text-xl font-semibold text-slate-900">Delete Student</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Are you sure you want to delete "{deleteStudent.name}" ({deleteStudent.studentId})?
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteStudent()}
+                disabled={loading}
+                className="flex-1 rounded-2xl bg-rose-100 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:bg-slate-200"
+              >
+                {loading ? "Deleting..." : "Delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteStudent(null)}
                 disabled={loading}
                 className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
               >
