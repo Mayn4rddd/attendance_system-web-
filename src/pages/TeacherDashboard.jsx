@@ -112,6 +112,18 @@ const TeacherDashboard = () => {
     return isScheduledToday;
   };
 
+  // Format time from 24-hour format (e.g., "18:00") to 12-hour format (e.g., "6:00 PM")
+  const formatTimeTo12Hour = (timeString) => {
+    if (!timeString) return "";
+    const [hourText, minute] = timeString.split(":");
+    const hourValue = Number(hourText);
+    if (Number.isNaN(hourValue) || !minute) return timeString;
+
+    const period = hourValue >= 12 ? "PM" : "AM";
+    const hour12 = hourValue === 0 ? 12 : hourValue > 12 ? hourValue - 12 : hourValue;
+    return `${hour12}:${minute} ${period}`;
+  };
+
   // Update class time status whenever selectedSection changes
   useEffect(() => {
     if (selectedSection) {
@@ -589,7 +601,7 @@ const TeacherDashboard = () => {
       // Update manual attendance state
       const updatedManual = {};
       attendanceList.forEach(a => {
-        updatedManual[a.studentId] = a.status;
+        updatedManual[a.studentDbId] = a.status;
       });
 
       setManualAttendance(prev => ({
@@ -722,7 +734,7 @@ const TeacherDashboard = () => {
                         <div className="mt-1 space-y-1 text-xs text-slate-500">
                           {section.schedules.map((schedule, idx) => (
                             <p key={idx}>
-                              {schedule.day} {schedule.startTime} - {schedule.endTime}
+                              {schedule.day} {formatTimeTo12Hour(schedule.startTime)} - {formatTimeTo12Hour(schedule.endTime)}
                             </p>
                           ))}
                         </div>
@@ -988,8 +1000,21 @@ const TeacherDashboard = () => {
               ) : sectionStudents.length === 0 ? (
                 <EmptyState icon="" title="No Students" description="This section has no students assigned yet." />
               ) : (
-                <div className="space-y-3">
-                  {sectionStudents.map((student) => (
+                <>
+                  {(() => {
+                   const filteredStudents = sectionStudents.filter(student =>
+  !attendance.some(a => a.studentDbId === student.id)
+);
+
+                    if (filteredStudents.length === 0) {
+                      return (
+                        <EmptyState icon="" title="All Caught Up" description="All students have already scanned via QR code." />
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-3">
+                        {filteredStudents.map((student) => (
                     <div
                       key={student.id}
                       className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -1031,8 +1056,11 @@ const TeacherDashboard = () => {
                         ))}
                       </div>
                     </div>
-                  ))}
-                </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </>
               )}
             </div>
           </section>

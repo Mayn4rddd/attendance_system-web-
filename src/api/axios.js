@@ -6,7 +6,7 @@ const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const loginPath = "/auth/web-login";
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   config.headers = config.headers ?? {};
   config.headers["Content-Type"] = "application/json";

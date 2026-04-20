@@ -12,6 +12,17 @@ const Masterlisz = () => {
   const [sectionsLoading, setSectionsLoading] = useState(false);
   const [status, setStatus] = useState({ message: "", error: "" });
 
+  const formatTimeTo12Hour = (timeString) => {
+    if (!timeString) return "";
+    const [hourText, minute] = timeString.split(":");
+    const hourValue = Number(hourText);
+    if (Number.isNaN(hourValue) || !minute) return timeString;
+
+    const period = hourValue >= 12 ? "PM" : "AM";
+    const hour12 = hourValue === 0 ? 12 : hourValue > 12 ? hourValue - 12 : hourValue;
+    return `${hour12}:${minute} ${period}`;
+  };
+
   const links = [
     { id: "my-sections", label: "My Sections" },
     { id: "masterlist", label: "Masterlist" },
@@ -158,7 +169,7 @@ const Masterlisz = () => {
                         <div className="mt-1 space-y-1 text-xs text-slate-500">
                           {section.schedules.map((schedule, idx) => (
                             <p key={idx}>
-                              ⏰ {schedule.day} {schedule.startTime} - {schedule.endTime}
+                              ⏰ {schedule.day} {formatTimeTo12Hour(schedule.startTime)} - {formatTimeTo12Hour(schedule.endTime)}
                             </p>
                           ))}
                         </div>

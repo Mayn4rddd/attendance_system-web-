@@ -2,7 +2,7 @@ import { HubConnectionBuilder, HubConnectionState } from "@microsoft/signalr";
 
 const connection = new HubConnectionBuilder()
   .withUrl(`${import.meta.env.VITE_API_URL}/attendanceHub`, {
-    accessTokenFactory: () => localStorage.getItem("token") ?? "",
+    accessTokenFactory: () => sessionStorage.getItem("token") ?? "",
   })
   .withAutomaticReconnect()
   .build();
