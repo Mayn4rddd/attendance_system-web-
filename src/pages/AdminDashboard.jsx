@@ -4,8 +4,75 @@ import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import EmptyState from "../components/EmptyState";
 
+// Pure validation functions - NO setState calls
+const validateStudentId = (value) => {
+  if (!value || !value.trim()) {
+    return "Student ID is required";
+  }
+  return "";
+};
+
+const validateName = (value) => {
+  if (!value || !value.trim()) {
+    return "Name is required";
+  }
+  const nameRegex = /^[a-zA-Z\s]+$/;
+  if (!nameRegex.test(value.trim())) {
+    return "Name must contain letters and spaces only";
+  }
+  return "";
+};
+
+const validateSection = (value) => {
+  if (!value || value === "") {
+    return "Section must be selected";
+  }
+  return "";
+};
+
+const validateParentName = (value) => {
+  if (!value || !value.trim()) {
+    return "Parent name is required";
+  }
+  return "";
+};
+
+const validateParentUsername = (value) => {
+  if (!value || !value.trim()) {
+    return "Parent username is required";
+  }
+  return "";
+};
+
+const validateParentPassword = (value) => {
+  if (!value || !value.trim()) {
+    return "Parent password is required";
+  }
+  return "";
+};
+
+// Pure validation that returns all errors without setState
+const getStudentFormErrors = (formData) => {
+  return {
+    studentId: validateStudentId(formData.studentId),
+    name: validateName(formData.name),
+    sectionId: validateSection(formData.sectionId),
+    parentName: validateParentName(formData.parentName),
+    parentUsername: validateParentUsername(formData.parentUsername),
+    parentPassword: validateParentPassword(formData.parentPassword),
+  };
+};
+
+// Check if form is valid without setState (pure function)
+const isStudentFormValidPure = (formData) => {
+  const errors = getStudentFormErrors(formData);
+  return Object.values(errors).every((error) => error === "");
+};
+
 const AdminDashboard = () => {
-  const [studentForm, setStudentForm] = useState({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+  const [studentForm, setStudentForm] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
+  const [studentFormErrors, setStudentFormErrors] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
+  const [studentFormTouched, setStudentFormTouched] = useState({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false });
   const [sectionForm, setSectionForm] = useState({ name: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "" });
   const [teacherForm, setTeacherForm] = useState({ name: "", username: "", password: "" });
@@ -42,7 +109,7 @@ const AdminDashboard = () => {
   const [deleteTeacher, setDeleteTeacher] = useState(null);
   
   const [editStudent, setEditStudent] = useState(null);
-  const [editStudentData, setEditStudentData] = useState({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+  const [editStudentData, setEditStudentData] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
   const [deleteStudent, setDeleteStudent] = useState(null);
 
   const navigationSections = useMemo(
@@ -55,6 +122,47 @@ const AdminDashboard = () => {
     ],
     []
   );
+
+  // Validate and handle student input changes
+  const handleStudentInputChange = (field, value) => {
+    let processedValue = value;
+
+    // Auto-trim spaces for most fields
+    if (field !== "parentPassword") {
+      processedValue = value.trimStart();
+    }
+
+    setStudentForm((current) => ({ ...current, [field]: processedValue }));
+
+    // Real-time validation only if field is already touched
+    if (studentFormTouched[field]) {
+      let error = "";
+      if (field === "studentId") error = validateStudentId(processedValue);
+      else if (field === "name") error = validateName(processedValue);
+      else if (field === "sectionId") error = validateSection(processedValue);
+      else if (field === "parentName") error = validateParentName(processedValue);
+      else if (field === "parentUsername") error = validateParentUsername(processedValue);
+      else if (field === "parentPassword") error = validateParentPassword(processedValue);
+
+      setStudentFormErrors((current) => ({ ...current, [field]: error }));
+    }
+  };
+
+  // Mark field as touched and validate on blur
+  const handleStudentFieldBlur = (field) => {
+    setStudentFormTouched((current) => ({ ...current, [field]: true }));
+    
+    // Validate on blur
+    let error = "";
+    if (field === "studentId") error = validateStudentId(studentForm.studentId);
+    else if (field === "name") error = validateName(studentForm.name);
+    else if (field === "sectionId") error = validateSection(studentForm.sectionId);
+    else if (field === "parentName") error = validateParentName(studentForm.parentName);
+    else if (field === "parentUsername") error = validateParentUsername(studentForm.parentUsername);
+    else if (field === "parentPassword") error = validateParentPassword(studentForm.parentPassword);
+
+    setStudentFormErrors((current) => ({ ...current, [field]: error }));
+  };
 
   const submitForm = async (endpoint, payload, successText) => {
     setLoading(true);
@@ -130,13 +238,30 @@ const AdminDashboard = () => {
 
   const handleStudentCreate = async (event) => {
     event.preventDefault();
+    
+    // Validate all fields and get errors
+    const errors = getStudentFormErrors(studentForm);
+    
+    // Check if any errors exist
+    if (Object.values(errors).some((error) => error !== "")) {
+      setStudentFormErrors(errors);
+      setStudentFormTouched({ studentId: true, name: true, sectionId: true, parentName: true, parentUsername: true, parentPassword: true });
+      return;
+    }
+
     await submitForm("/admin/students", {
-      studentId: studentForm.studentId,
-      name: studentForm.name,
+      studentId: studentForm.studentId.trim(),
+      name: studentForm.name.trim(),
       sectionId: Number(studentForm.sectionId),
-      parentPhone: studentForm.parentPhone,
+      parentName: studentForm.parentName.trim(),
+      parentUsername: studentForm.parentUsername.trim(),
+      parentPassword: studentForm.parentPassword.trim(),
     }, "Student created successfully.");
-    setStudentForm({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+    
+    // Reset form on success
+    setStudentForm({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
+    setStudentFormErrors({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
+    setStudentFormTouched({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false });
     fetchStudents();
   };
 
@@ -358,11 +483,13 @@ const AdminDashboard = () => {
         studentId: editStudentData.studentId,
         name: editStudentData.name,
         sectionId: Number(editStudentData.sectionId),
-        parentPhone: editStudentData.parentPhone,
+        parentName: editStudentData.parentName,
+        parentUsername: editStudentData.parentUsername,
+        parentPassword: editStudentData.parentPassword,
       });
       setStatus({ message: "Student updated successfully.", error: "" });
       setEditStudent(null);
-      setEditStudentData({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+      setEditStudentData({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
       fetchStudents();
     } catch (error) {
       console.error("Update failed:", error);
@@ -470,33 +597,73 @@ const AdminDashboard = () => {
           <section id="students" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="text-2xl font-semibold">{editStudent ? "Edit Student" : "Add Student"}</h2>
             <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={editStudent ? handleEditStudent : handleStudentCreate}>
+              {/* Student ID */}
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Student ID</span>
                 <input
                   type="text"
                   value={editStudent ? editStudentData.studentId : studentForm.studentId}
-                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, studentId: e.target.value })) : setStudentForm((current) => ({ ...current, studentId: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, studentId: e.target.value })) : handleStudentInputChange("studentId", e.target.value)}
+                  onBlur={() => !editStudent && handleStudentFieldBlur("studentId")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editStudent
+                      ? "border-slate-200 bg-slate-50"
+                      : studentFormErrors.studentId && studentFormTouched.studentId
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : !studentFormErrors.studentId && studentFormTouched.studentId && studentForm.studentId.trim()
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  placeholder="Enter Student ID"
+                  required={!editStudent}
                 />
+                {!editStudent && studentFormErrors.studentId && studentFormTouched.studentId && (
+                  <p className="mt-1 text-sm text-rose-600">{studentFormErrors.studentId}</p>
+                )}
               </label>
+
+              {/* Name */}
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Name</span>
                 <input
                   type="text"
                   value={editStudent ? editStudentData.name : studentForm.name}
-                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, name: e.target.value })) : setStudentForm((current) => ({ ...current, name: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, name: e.target.value })) : handleStudentInputChange("name", e.target.value)}
+                  onBlur={() => !editStudent && handleStudentFieldBlur("name")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editStudent
+                      ? "border-slate-200 bg-slate-50"
+                      : studentFormErrors.name && studentFormTouched.name
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : !studentFormErrors.name && studentFormTouched.name && studentForm.name.trim()
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  placeholder="e.g., John Doe"
+                  required={!editStudent}
                 />
+                {!editStudent && studentFormErrors.name && studentFormTouched.name && (
+                  <p className="mt-1 text-sm text-rose-600">{studentFormErrors.name}</p>
+                )}
               </label>
+
+              {/* Section */}
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Section</span>
                 <select
                   value={editStudent ? editStudentData.sectionId : studentForm.sectionId}
-                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, sectionId: e.target.value })) : setStudentForm((current) => ({ ...current, sectionId: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, sectionId: e.target.value })) : handleStudentInputChange("sectionId", e.target.value)}
+                  onBlur={() => !editStudent && handleStudentFieldBlur("sectionId")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editStudent
+                      ? "border-slate-200 bg-slate-50"
+                      : studentFormErrors.sectionId && studentFormTouched.sectionId
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : !studentFormErrors.sectionId && studentFormTouched.sectionId && studentForm.sectionId
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  required={!editStudent}
                 >
                   <option value="">-- Select Section --</option>
                   {sections.map((section) => (
@@ -505,22 +672,92 @@ const AdminDashboard = () => {
                     </option>
                   ))}
                 </select>
+                {!editStudent && studentFormErrors.sectionId && studentFormTouched.sectionId && (
+                  <p className="mt-1 text-sm text-rose-600">{studentFormErrors.sectionId}</p>
+                )}
               </label>
+
+              {/* Parent Name */}
               <label className="block">
-                <span className="text-sm font-medium text-slate-700">Parent Phone</span>
+                <span className="text-sm font-medium text-slate-700">Parent Name</span>
                 <input
                   type="text"
-                  value={editStudent ? editStudentData.parentPhone : studentForm.parentPhone}
-                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, parentPhone: e.target.value })) : setStudentForm((current) => ({ ...current, parentPhone: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required
+                  value={editStudent ? editStudentData.parentName : studentForm.parentName}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, parentName: e.target.value })) : handleStudentInputChange("parentName", e.target.value)}
+                  onBlur={() => !editStudent && handleStudentFieldBlur("parentName")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editStudent
+                      ? "border-slate-200 bg-slate-50"
+                      : studentFormErrors.parentName && studentFormTouched.parentName
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : !studentFormErrors.parentName && studentFormTouched.parentName && studentForm.parentName.trim()
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  placeholder="e.g., Maria Santos"
+                  required={!editStudent}
                 />
+                {!editStudent && studentFormErrors.parentName && studentFormTouched.parentName && (
+                  <p className="mt-1 text-sm text-rose-600">{studentFormErrors.parentName}</p>
+                )}
               </label>
+
+              {/* Parent Username */}
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Parent Username</span>
+                <input
+                  type="text"
+                  value={editStudent ? editStudentData.parentUsername : studentForm.parentUsername}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, parentUsername: e.target.value })) : handleStudentInputChange("parentUsername", e.target.value)}
+                  onBlur={() => !editStudent && handleStudentFieldBlur("parentUsername")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editStudent
+                      ? "border-slate-200 bg-slate-50"
+                      : studentFormErrors.parentUsername && studentFormTouched.parentUsername
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : !studentFormErrors.parentUsername && studentFormTouched.parentUsername && studentForm.parentUsername.trim()
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  placeholder="e.g., parent_john"
+                  required={!editStudent}
+                />
+                {!editStudent && studentFormErrors.parentUsername && studentFormTouched.parentUsername && (
+                  <p className="mt-1 text-sm text-rose-600">{studentFormErrors.parentUsername}</p>
+                )}
+              </label>
+
+              {/* Parent Password */}
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Parent Password</span>
+                <input
+                  type="password"
+                  value={editStudent ? editStudentData.parentPassword : studentForm.parentPassword}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, parentPassword: e.target.value })) : handleStudentInputChange("parentPassword", e.target.value)}
+                  onBlur={() => !editStudent && handleStudentFieldBlur("parentPassword")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editStudent
+                      ? "border-slate-200 bg-slate-50"
+                      : studentFormErrors.parentPassword && studentFormTouched.parentPassword
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : !studentFormErrors.parentPassword && studentFormTouched.parentPassword && studentForm.parentPassword.trim()
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  placeholder="Enter password"
+                  required={!editStudent}
+                />
+                {!editStudent && studentFormErrors.parentPassword && studentFormTouched.parentPassword && (
+                  <p className="mt-1 text-sm text-rose-600">{studentFormErrors.parentPassword}</p>
+                )}
+              </label>
+
+              {/* Submit Buttons */}
               <div className="sm:col-span-2 flex gap-2">
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400"
+                  disabled={loading || (!editStudent && !isStudentFormValidPure(studentForm))}
+                  className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
                 >
                   {loading ? "Saving..." : editStudent ? "Update Student" : "Create Student"}
                 </button>
@@ -529,7 +766,7 @@ const AdminDashboard = () => {
                     type="button"
                     onClick={() => {
                       setEditStudent(null);
-                      setEditStudentData({ studentId: "", name: "", sectionId: "", parentPhone: "" });
+                      setEditStudentData({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
                     }}
                     className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-slate-700 transition hover:bg-slate-50"
                   >
@@ -563,7 +800,7 @@ const AdminDashboard = () => {
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Student ID</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Name</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Section</th>
-                        <th className="px-6 py-4 text-left font-semibold text-slate-900">Parent Phone</th>
+                        <th className="px-6 py-4 text-left font-semibold text-slate-900">Parent Account Created</th>
                         <th className="px-6 py-4 text-left font-semibold text-slate-900">Actions</th>
                       </tr>
                     </thead>
@@ -576,7 +813,7 @@ const AdminDashboard = () => {
       {student.section || 'N/A'}
     </td>
     <td className="px-6 py-4 text-slate-600">
-      {student.parentPhone || 'N/A'}
+      Created
     </td>
     <td className="px-6 py-4">
       <div className="flex gap-2">
@@ -588,7 +825,9 @@ const AdminDashboard = () => {
               studentId: student.studentId,
               name: student.name,
               sectionId: student.sectionId || "",
-              parentPhone: student.parentPhone,
+              parentName: student.parentName || "",
+              parentUsername: student.parentUsername || "",
+              parentPassword: "",
             });
           }}
           className="rounded-lg bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-200"

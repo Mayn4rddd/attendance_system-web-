@@ -473,14 +473,35 @@ const TeacherDashboard = () => {
       return;
     }
     
+    // Get GPS location before generating QR
+    if (!navigator.geolocation) {
+      setStatus({ message: "", error: "Geolocation is not supported by this browser." });
+      return;
+    }
+    
     setLoading(true);
     setStatus({ message: "", error: "" });
     
     try {
+      const position = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 300000 // 5 minutes
+        });
+      });
+      
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+      
+      console.log("Teacher GPS:", latitude, longitude);
+      
       const payload = {
         userId: user.userId,
         sectionId: Number(sectionId),
         subjectId: Number(subjectId),
+        latitude: latitude,
+        longitude: longitude,
       };
       
       console.log("[QR Generate] Sending payload:", payload);
@@ -496,10 +517,19 @@ const TeacherDashboard = () => {
       // Refresh masterlist to show current attendance status
       await fetchMasterlist(selectedSection);
     } catch (error) {
-      const errorMsg = getErrorMessage(error, "Failed to generate QR session. Please ensure the section is properly configured.");
-      console.error("[QR Generate] Error:", errorMsg);
-      const friendlyMsg = getFriendlyErrorMessage(errorMsg);
-      setStatus({ message: "", error: friendlyMsg });
+      if (error.code === error.PERMISSION_DENIED) {
+        alert("Please enable location to generate QR");
+        setStatus({ message: "", error: "Location permission is required to generate QR codes." });
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        setStatus({ message: "", error: "Location information is unavailable. Please check your GPS settings." });
+      } else if (error.code === error.TIMEOUT) {
+        setStatus({ message: "", error: "Location request timed out. Please try again." });
+      } else {
+        const errorMsg = getErrorMessage(error, "Failed to generate QR session. Please ensure the section is properly configured.");
+        console.error("[QR Generate] Error:", errorMsg);
+        const friendlyMsg = getFriendlyErrorMessage(errorMsg);
+        setStatus({ message: "", error: friendlyMsg });
+      }
     } finally {
       setLoading(false);
     }
