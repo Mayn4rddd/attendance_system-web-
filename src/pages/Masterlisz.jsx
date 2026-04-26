@@ -128,7 +128,7 @@ const Masterlisz = () => {
                 disabled={sectionsLoading}
                 className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-400 disabled:cursor-not-allowed"
               >
-                {sectionsLoading ? "🔄 Refreshing..." : "🔄 Refresh"}
+                {sectionsLoading ? " Refreshing..." : " Refresh"}
               </button>
             </div>
           </header>
@@ -169,12 +169,12 @@ const Masterlisz = () => {
                         <div className="mt-1 space-y-1 text-xs text-slate-500">
                           {section.schedules.map((schedule, idx) => (
                             <p key={idx}>
-                              ⏰ {schedule.day} {formatTimeTo12Hour(schedule.startTime)} - {formatTimeTo12Hour(schedule.endTime)}
+                               {schedule.day} {formatTimeTo12Hour(schedule.startTime)} - {formatTimeTo12Hour(schedule.endTime)}
                             </p>
                           ))}
                         </div>
                       ) : (
-                        <p className="mt-1 text-xs text-slate-500">⏰ No schedule</p>
+                        <p className="mt-1 text-xs text-slate-500"> No schedule</p>
                       )}
                     </button>
                   );

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
@@ -51,22 +53,36 @@ const validateParentPassword = (value) => {
   return "";
 };
 
-// Pure validation that returns all errors without setState
-const getStudentFormErrors = (formData) => {
-  return {
-    studentId: validateStudentId(formData.studentId),
-    name: validateName(formData.name),
-    sectionId: validateSection(formData.sectionId),
-    parentName: validateParentName(formData.parentName),
-    parentUsername: validateParentUsername(formData.parentUsername),
-    parentPassword: validateParentPassword(formData.parentPassword),
-  };
+const validateEmail = (value) => {
+  if (!value || !value.trim()) {
+    return "Email is required";
+  }
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(value.trim())) {
+    return "Email is invalid";
+  }
+  return "";
 };
 
-// Check if form is valid without setState (pure function)
-const isStudentFormValidPure = (formData) => {
-  const errors = getStudentFormErrors(formData);
-  return Object.values(errors).every((error) => error === "");
+const validateUsername = (value) => {
+  if (!value || !value.trim()) {
+    return "Username is required";
+  }
+  const usernameRegex = /^[a-zA-Z0-9_\.\-]{3,30}$/;
+  if (!usernameRegex.test(value.trim())) {
+    return "Username must be 3-30 characters and may include letters, numbers, underscores, dots, or dashes";
+  }
+  return "";
+};
+
+const validateTeacherPassword = (value) => {
+  if (!value || !value.trim()) {
+    return "Password is required";
+  }
+  if (value.length < 6) {
+    return "Password must be at least 6 characters";
+  }
+  return "";
 };
 
 const AdminDashboard = () => {
@@ -75,7 +91,9 @@ const AdminDashboard = () => {
   const [studentFormTouched, setStudentFormTouched] = useState({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false });
   const [sectionForm, setSectionForm] = useState({ name: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "" });
-  const [teacherForm, setTeacherForm] = useState({ name: "", username: "", password: "" });
+  const [teacherForm, setTeacherForm] = useState({ name: "", username: "", password: "", email: "" });
+  const [teacherFormErrors, setTeacherFormErrors] = useState({ name: "", username: "", password: "", email: "" });
+  const [teacherFormTouched, setTeacherFormTouched] = useState({ name: false, username: false, password: false, email: false });
   const [assignForm, setAssignForm] = useState({
     sectionId: "",
     teacherId: "",
@@ -86,31 +104,154 @@ const AdminDashboard = () => {
   const [sections, setSections] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [students, setStudents] = useState([]);
-  const [attendanceSummary, setAttendanceSummary] = useState({
-    totalStudents: 0,
-    present: 0,
-    late: 0,
-    absent: 0,
-    attendancePercentage: 0,
-  });
-  const [status, setStatus] = useState({ message: "", error: "" });
   const [loading, setLoading] = useState(false);
   const [editSubject, setEditSubject] = useState(null);
   const [editSubjectName, setEditSubjectName] = useState("");
-  const [deleteSubject, setDeleteSubject] = useState(null);
-  const [deleteWithAssignmentsPrompt, setDeleteWithAssignmentsPrompt] = useState(false);
   
   const [editSection, setEditSection] = useState(null);
   const [editSectionName, setEditSectionName] = useState("");
   const [deleteSection, setDeleteSection] = useState(null);
   
   const [editTeacher, setEditTeacher] = useState(null);
-  const [editTeacherData, setEditTeacherData] = useState({ name: "", username: "", password: "" });
+  const [editTeacherData, setEditTeacherData] = useState({ name: "", username: "", password: "", email: "" });
   const [deleteTeacher, setDeleteTeacher] = useState(null);
   
   const [editStudent, setEditStudent] = useState(null);
   const [editStudentData, setEditStudentData] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
   const [deleteStudent, setDeleteStudent] = useState(null);
+
+  const [deleteModal, setDeleteModal] = useState(null);
+
+  const [selectedSection, setSelectedSection] = useState("");
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const studentsPerPage = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedSection, searchQuery]);
+
+  const filteredStudents = selectedSection ? students.filter(s => s.sectionId == selectedSection) : students;
+  const searchedStudents = filteredStudents.filter(s =>
+    s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    s.studentId.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const totalPages = Math.ceil(searchedStudents.length / studentsPerPage);
+  const paginatedStudents = searchedStudents.slice(
+    (currentPage - 1) * studentsPerPage,
+    currentPage * studentsPerPage
+  );
+
+  const apiRoutes = useMemo(
+    () => ({
+      students: "/admin/students",
+      teachers: "/admin/teachers",
+      subjects: "/admin/subjects",
+      sections: "/admin/sections",
+      createTeacher: "/admin/create-teacher",
+      createSection: "/admin/create-section",
+      createSubject: "/admin/create-subject",
+      assignTeacherSubject: "/admin/assign-teacher-subject",
+    }),
+    []
+  );
+
+  const isDuplicateStudentId = (studentId) => {
+    const normalized = String(studentId).trim().toLowerCase();
+    return students.some((student) => String(student.studentId).trim().toLowerCase() === normalized);
+  };
+
+  const isDuplicateUsername = (username, excludeTeacherId = null) => {
+    const normalized = String(username).trim().toLowerCase();
+    const teacherCollision = teachers.some(
+      (teacher) => teacher.id !== excludeTeacherId && String(teacher.username || "").trim().toLowerCase() === normalized
+    );
+    if (teacherCollision) return true;
+    return students.some(
+      (student) => String(student.parentUsername || "").trim().toLowerCase() === normalized
+    );
+  };
+
+  const getTeacherFormErrors = (formData, excludeTeacherId = null, requirePassword = true) => {
+    const errors = {
+      name: validateName(formData.name),
+      username: validateUsername(formData.username),
+      email: validateEmail(formData.email),
+      password: requirePassword ? validateTeacherPassword(formData.password) : "",
+    };
+
+    if (!errors.username && isDuplicateUsername(formData.username, excludeTeacherId)) {
+      errors.username = "Username already exists";
+    }
+
+    return errors;
+  };
+
+  const getStudentFormErrors = (formData) => {
+    const errors = {
+      studentId: validateStudentId(formData.studentId),
+      name: validateName(formData.name),
+      sectionId: validateSection(formData.sectionId),
+      parentName: validateParentName(formData.parentName),
+      parentUsername: validateParentUsername(formData.parentUsername),
+      parentPassword: validateParentPassword(formData.parentPassword),
+    };
+
+    if (!errors.studentId && isDuplicateStudentId(formData.studentId)) {
+      errors.studentId = "Student ID already exists";
+    }
+
+    if (!errors.parentUsername && isDuplicateUsername(formData.parentUsername)) {
+      errors.parentUsername = "Username already exists";
+    }
+
+    return errors;
+  };
+
+  const isStudentFormValidPure = (formData) => {
+    const errors = getStudentFormErrors(formData);
+    return Object.values(errors).every((error) => error === "");
+  };
+
+  const isTeacherFormValidPure = (formData) => {
+    const errors = getTeacherFormErrors(formData);
+    return Object.values(errors).every((error) => error === "");
+  };
+
+  const handleTeacherInputChange = (field, value) => {
+    setTeacherForm((current) => ({ ...current, [field]: value }));
+    if (teacherFormTouched[field]) {
+      setTeacherFormErrors((current) => ({
+        ...current,
+        [field]: field === "name"
+          ? validateName(value)
+          : field === "username"
+          ? validateUsername(value)
+          : field === "password"
+          ? validateTeacherPassword(value)
+          : field === "email"
+          ? validateEmail(value)
+          : "",
+      }));
+    }
+  };
+
+  const handleTeacherFieldBlur = (field) => {
+    setTeacherFormTouched((current) => ({ ...current, [field]: true }));
+    setTeacherFormErrors((current) => ({
+      ...current,
+      [field]: field === "name"
+        ? validateName(teacherForm.name)
+        : field === "username"
+        ? validateUsername(teacherForm.username)
+        : field === "password"
+        ? validateTeacherPassword(teacherForm.password)
+        : field === "email"
+        ? validateEmail(teacherForm.email)
+        : "",
+    }));
+  };
 
   const navigationSections = useMemo(
     () => [
@@ -165,67 +306,68 @@ const AdminDashboard = () => {
   };
 
   const submitForm = async (endpoint, payload, successText) => {
+    console.log("submitForm start", endpoint, payload);
     setLoading(true);
-    setStatus({ message: "", error: "" });
+
     try {
-      await api.post(endpoint, payload);
-      setStatus({ message: successText, error: "" });
+      const response = await api.post(endpoint, payload);
+      const successMessage = response?.data?.message || successText;
+      toast.success(successMessage);
+      console.log("submitForm success", response.data);
+      return { success: true, data: response.data };
     } catch (error) {
       console.error("Request failed:", error);
-      setStatus({ message: "", error: error.response?.data?.message || error.message || "Request failed" });
+      const errorMessage =
+        error.response?.data?.message ||
+        (error.response?.data ? JSON.stringify(error.response.data) : null) ||
+        error.message ||
+        "Request failed";
+      toast.error(errorMessage);
+      console.log("submitForm error", errorMessage);
+      return { success: false, error: errorMessage };
     } finally {
       setLoading(false);
+      console.log("submitForm finished", endpoint, { loading: false });
     }
   };
 
   const fetchSubjects = async () => {
     try {
-      const response = await api.get("/admin/subjects");
+      const response = await api.get(apiRoutes.subjects);
       setSubjects(response.data || []);
     } catch (error) {
       console.error("Failed to fetch subjects:", error);
+      toast.error("Unable to load subjects.");
     }
   };
 
   const fetchSections = async () => {
     try {
-      const response = await api.get("/admin/sections");
+      const response = await api.get(apiRoutes.sections);
       setSections(response.data || []);
     } catch (error) {
       console.error("Failed to fetch sections:", error);
+      toast.error("Unable to load sections.");
     }
   };
 
   const fetchTeachers = async () => {
     try {
-      const response = await api.get("/admin/teachers");
+      const response = await api.get(apiRoutes.teachers);
       setTeachers(response.data || []);
     } catch (error) {
       console.error("Failed to fetch teachers:", error);
-    }
-  };
-
-  const fetchAttendanceSummary = async () => {
-    try {
-      const response = await api.get(`/teacher/attendance-summary?sectionId=1&subjectId=1`);
-      setAttendanceSummary(response.data || {
-        totalStudents: 0,
-        present: 0,
-        late: 0,
-        absent: 0,
-        attendancePercentage: 0,
-      });
-    } catch (error) {
-      console.error("Failed to fetch attendance summary:", error);
+      toast.error("Unable to load teachers.");
     }
   };
 
   const fetchStudents = async () => {
     try {
-      const response = await api.get("/admin/students");
+      const response = await api.get(apiRoutes.students);
       setStudents(response.data || []);
     } catch (error) {
       console.error("Failed to fetch students:", error);
+      toast.error("Unable to load students.");
     }
   };
 
@@ -238,27 +380,28 @@ const AdminDashboard = () => {
 
   const handleStudentCreate = async (event) => {
     event.preventDefault();
-    
-    // Validate all fields and get errors
+
     const errors = getStudentFormErrors(studentForm);
-    
-    // Check if any errors exist
     if (Object.values(errors).some((error) => error !== "")) {
       setStudentFormErrors(errors);
       setStudentFormTouched({ studentId: true, name: true, sectionId: true, parentName: true, parentUsername: true, parentPassword: true });
+      toast.error("Please fix the highlighted fields before submitting.");
       return;
     }
 
-    await submitForm("/admin/students", {
+    const response = await submitForm(apiRoutes.students, {
       studentId: studentForm.studentId.trim(),
       name: studentForm.name.trim(),
       sectionId: Number(studentForm.sectionId),
       parentName: studentForm.parentName.trim(),
       parentUsername: studentForm.parentUsername.trim(),
-      parentPassword: studentForm.parentPassword.trim(),
+      parentPassword: studentForm.parentPassword,
     }, "Student created successfully.");
-    
-    // Reset form on success
+
+    if (!response.success) {
+      return;
+    }
+
     setStudentForm({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
     setStudentFormErrors({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
     setStudentFormTouched({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false });
@@ -267,24 +410,34 @@ const AdminDashboard = () => {
 
   const handleSubjectCreate = async (event) => {
     event.preventDefault();
-    await submitForm("/admin/create-subject", { name: subjectForm.name }, "Subject created successfully.");
+    if (!subjectForm.name.trim()) {
+      toast.error("Subject name is required.");
+      return;
+    }
+    const response = await submitForm(apiRoutes.createSubject, { name: subjectForm.name }, "Subject created successfully.");
+    if (!response.success) {
+      return;
+    }
     setSubjectForm({ name: "" });
     fetchSubjects(); // Refresh the list
   };
 
   const handleSectionCreate = async (event) => {
     event.preventDefault();
+    if (!sectionForm.name.trim()) {
+      toast.error("Section name is required.");
+      return;
+    }
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
-      await api.post("/admin/create-section", { name: sectionForm.name });
-      setStatus({ message: "Section created successfully.", error: "" });
+      await api.post(apiRoutes.createSection, { name: sectionForm.name });
+      toast.success("Section created successfully.");
       setSectionForm({ name: "" });
       fetchSections(); // Refresh the list
     } catch (error) {
       console.error("Create failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Create failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -292,12 +445,33 @@ const AdminDashboard = () => {
 
   const handleTeacherCreate = async (event) => {
     event.preventDefault();
-    if (!teacherForm.username.trim()) {
-      setStatus({ message: "", error: "Username is required." });
+    console.log("Teacher create submit handler triggered", teacherForm);
+
+    const errors = getTeacherFormErrors(teacherForm);
+    if (Object.values(errors).some((error) => error !== "")) {
+      console.log("Teacher create validation failed", errors);
+      setTeacherFormErrors(errors);
+      setTeacherFormTouched({ name: true, username: true, password: true, email: true });
+      toast.error(errors.username || errors.email || errors.name || errors.password || "Please fix the highlighted fields before submitting.");
       return;
     }
-    await submitForm("/admin/create-teacher", { name: teacherForm.name, username: teacherForm.username, password: teacherForm.password }, "Teacher created successfully.");
-    setTeacherForm({ name: "", username: "", password: "" });
+
+    const response = await submitForm(apiRoutes.createTeacher, {
+      name: teacherForm.name.trim(),
+      username: teacherForm.username.trim(),
+      password: teacherForm.password,
+      email: teacherForm.email.trim(),
+    }, "Teacher created successfully.");
+
+    if (!response.success) {
+      console.log("Teacher create request failed", response.error);
+      return;
+    }
+
+    console.log("Teacher create request succeeded", response.data);
+    setTeacherForm({ name: "", username: "", password: "", email: "" });
+    setTeacherFormErrors({ name: "", username: "", password: "", email: "" });
+    setTeacherFormTouched({ name: false, username: false, password: false, email: false });
     fetchTeachers(); // Refresh the list
   };
 
@@ -332,6 +506,10 @@ const AdminDashboard = () => {
 
   const handleAssignTeacher = async (event) => {
     event.preventDefault();
+    if (!assignForm.sectionId || !assignForm.teacherId || !assignForm.subjectId || assignForm.schedules.some(s => !s.day || !s.startTime || !s.endTime)) {
+      toast.error("Please fill all required fields.");
+      return;
+    }
     const payload = {
       teacherId: Number(assignForm.teacherId),
       sectionId: Number(assignForm.sectionId),
@@ -343,46 +521,81 @@ const AdminDashboard = () => {
       })),
     };
     console.log("FINAL PAYLOAD:", payload);
-    await submitForm("/admin/assign-teacher-subject", payload, "Teacher assigned successfully.");
+    const response = await submitForm(apiRoutes.assignTeacherSubject, payload, "Teacher assigned successfully.");
+    if (response.success) {
+      setAssignForm({
+        sectionId: "",
+        teacherId: "",
+        subjectId: "",
+        schedules: [{ day: "", startTime: "", endTime: "" }],
+      });
+    }
   };
 
   const handleEditSubject = async (event) => {
     event?.preventDefault();
-    if (!editSubject || !editSubjectName.trim()) return;
+    if (!editSubject) return;
+    if (!editSubjectName.trim()) {
+      toast.error("Subject name is required.");
+      return;
+    }
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
       await api.put(`/admin/subject/${editSubject.id}`, { name: editSubjectName });
-      setStatus({ message: "Subject updated successfully.", error: "" });
+      toast.success("Subject updated successfully.");
       setEditSubject(null);
       setEditSubjectName("");
       fetchSubjects();
     } catch (error) {
       console.error("Update failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Update failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteSubject = async (force = false) => {
-    if (!deleteSubject) return;
+  const handleDeleteSubject = async (subject) => {
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
-      await api.delete(`/admin/subject/${deleteSubject.id}?force=${force}`);
-      setStatus({ message: "Subject deleted successfully.", error: "" });
-      setDeleteSubject(null);
-      setDeleteWithAssignmentsPrompt(false);
+      await api.delete(`/admin/subject/${subject.id}`);
+      toast.success("Subject deleted successfully.");
       fetchSubjects();
     } catch (error) {
-      console.error("Delete failed:", error);
-      const errorMessage = error.response?.data?.message || error.message || "Delete failed";
-      if (errorMessage.includes("has assignments") && !force) {
-        setDeleteWithAssignmentsPrompt(true);
+      const errorData = error.response?.data;
+      const hasAssignments =
+        errorData?.hasAssignments ||
+        (typeof errorData === "string" &&
+          errorData.toLowerCase().includes("assigned"));
+      if (hasAssignments) {
+        setDeleteModal({
+          title: "Confirm Deletion",
+          message: "This subject is assigned to teachers. Deleting it will remove all assignments. Are you sure?",
+          onConfirm: async () => {
+            setLoading(true);
+            try {
+              await api.delete(`/admin/subject/${subject.id}?force=true`);
+              toast.success("Subject and assignments deleted successfully.");
+              fetchSubjects();
+              setDeleteModal(null);
+            } catch (forceError) {
+              toast.error(
+                forceError.response?.data?.message ||
+                  forceError.message ||
+                  "Force delete failed"
+              );
+            } finally {
+              setLoading(false);
+            }
+          },
+          onCancel: () => setDeleteModal(null)
+        });
       } else {
-        setStatus({ message: "", error: errorMessage });
+        toast.error(
+          errorData?.message ||
+            error.message ||
+            "Delete failed"
+        );
       }
     } finally {
       setLoading(false);
@@ -391,19 +604,22 @@ const AdminDashboard = () => {
 
   const handleEditSection = async (event) => {
     event?.preventDefault();
-    if (!editSection || !editSectionName.trim()) return;
+    if (!editSection) return;
+    if (!editSectionName.trim()) {
+      toast.error("Section name is required.");
+      return;
+    }
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
       await api.put(`/admin/section/${editSection.id}`, { name: editSectionName });
-      setStatus({ message: "Section updated successfully.", error: "" });
+      toast.success("Section updated successfully.");
       setEditSection(null);
       setEditSectionName("");
       fetchSections();
     } catch (error) {
       console.error("Update failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Update failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -412,16 +628,15 @@ const AdminDashboard = () => {
   const handleDeleteSection = async () => {
     if (!deleteSection) return;
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
       await api.delete(`/admin/section/${deleteSection.id}`);
-      setStatus({ message: "Section deleted successfully.", error: "" });
+      toast.success("Section deleted successfully.");
       setDeleteSection(null);
       fetchSections();
     } catch (error) {
       console.error("Delete failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Delete failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -429,27 +644,33 @@ const AdminDashboard = () => {
 
   const handleEditTeacher = async (event) => {
     event?.preventDefault();
-    if (!editTeacher || !editTeacherData.name.trim()) return;
+    if (!editTeacher) return;
+
+    const errors = getTeacherFormErrors(editTeacherData, editTeacher.id, false);
+    if (Object.values(errors).some((error) => error !== "")) {
+      toast.error(errors.username || errors.email || errors.name || errors.password || "Please fix the highlighted fields before updating.");
+      return;
+    }
+
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
       const payload = {
-        name: editTeacherData.name,
-        username: editTeacherData.username,
+        name: editTeacherData.name.trim(),
+        username: editTeacherData.username.trim(),
+        email: editTeacherData.email.trim(),
       };
-      // Only include password if it's not empty
-      if (editTeacherData.password.trim()) {
+      if (editTeacherData.password) {
         payload.password = editTeacherData.password;
       }
-      await api.put(`/admin/teacher/${editTeacher.id}`, payload);
-      setStatus({ message: "Teacher updated successfully.", error: "" });
+      await api.put(`${apiRoutes.teachers}/${editTeacher.id}`, payload);
+      toast.success("Teacher updated successfully.");
       setEditTeacher(null);
-      setEditTeacherData({ name: "", username: "", password: "" });
+      setEditTeacherData({ name: "", username: "", password: "", email: "" });
       fetchTeachers();
     } catch (error) {
       console.error("Update failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Update failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -458,16 +679,15 @@ const AdminDashboard = () => {
   const handleDeleteTeacher = async () => {
     if (!deleteTeacher) return;
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
       await api.delete(`/admin/teacher/${deleteTeacher.id}`);
-      setStatus({ message: "Teacher deleted successfully.", error: "" });
+      toast.success("Teacher deleted successfully.");
       setDeleteTeacher(null);
       fetchTeachers();
     } catch (error) {
       console.error("Delete failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Delete failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -475,9 +695,12 @@ const AdminDashboard = () => {
 
   const handleEditStudent = async (event) => {
     event?.preventDefault();
-    if (!editStudent || !editStudentData.name.trim()) return;
+    if (!editStudent) return;
+    if (!editStudentData.name.trim()) {
+      toast.error("Student name is required.");
+      return;
+    }
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
       await api.put(`/admin/student/${editStudent.id}`, {
         studentId: editStudentData.studentId,
@@ -487,14 +710,14 @@ const AdminDashboard = () => {
         parentUsername: editStudentData.parentUsername,
         parentPassword: editStudentData.parentPassword,
       });
-      setStatus({ message: "Student updated successfully.", error: "" });
+      toast.success("Student updated successfully.");
       setEditStudent(null);
       setEditStudentData({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
       fetchStudents();
     } catch (error) {
       console.error("Update failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Update failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -503,16 +726,15 @@ const AdminDashboard = () => {
   const handleDeleteStudent = async () => {
     if (!deleteStudent) return;
     setLoading(true);
-    setStatus({ message: "", error: "" });
     try {
       await api.delete(`/admin/student/${deleteStudent.id}`);
-      setStatus({ message: "Student deleted successfully.", error: "" });
+      toast.success("Student deleted successfully.");
       setDeleteStudent(null);
       fetchStudents();
     } catch (error) {
       console.error("Delete failed:", error);
       const errorMessage = error.response?.data?.message || error.message || "Delete failed";
-      setStatus({ message: "", error: errorMessage });
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -520,6 +742,7 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
+      <ToastContainer position="top-right" autoClose={3000} pauseOnHover newestOnTop />
       <Navbar />
       <div className="mx-auto flex max-w-7xl gap-6 px-4 py-6 lg:px-8">
         <Sidebar links={navigationSections} />
@@ -530,69 +753,51 @@ const AdminDashboard = () => {
             <p className="mt-2 text-sm text-slate-600">Manage students, sections, teachers, and assignments.</p>
           </header>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {/* Total Students Card */}
             <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 p-6 shadow-sm ring-1 ring-blue-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-blue-600">Total Students</p>
-                  <p className="mt-2 text-3xl font-bold text-blue-900">{attendanceSummary.totalStudents}</p>
+                  <p className="mt-2 text-3xl font-bold text-blue-900">{students.length}</p>
                 </div>
                 <div className="text-4xl">👥</div>
               </div>
             </div>
 
-            {/* Present Card */}
+            {/* Total Teachers Card */}
             <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 shadow-sm ring-1 ring-emerald-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-emerald-600">Present</p>
-                  <p className="mt-2 text-3xl font-bold text-emerald-900">{attendanceSummary.present}</p>
+                  <p className="text-sm font-medium text-emerald-600">Total Teachers</p>
+                  <p className="mt-2 text-3xl font-bold text-emerald-900">{teachers.length}</p>
                 </div>
-                <div className="text-4xl">✓</div>
+                <div className="text-4xl">👨‍🏫</div>
               </div>
             </div>
 
-            {/* Late Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 p-6 shadow-sm ring-1 ring-amber-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-amber-600">Late</p>
-                  <p className="mt-2 text-3xl font-bold text-amber-900">{attendanceSummary.late}</p>
-                </div>
-                <div className="text-4xl">⏱</div>
-              </div>
-            </div>
-
-            {/* Absent Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-rose-50 to-rose-100 p-6 shadow-sm ring-1 ring-rose-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-rose-600">Absent</p>
-                  <p className="mt-2 text-3xl font-bold text-rose-900">{attendanceSummary.absent}</p>
-                </div>
-                <div className="text-4xl">✕</div>
-              </div>
-            </div>
-
-            {/* Attendance Percentage Card */}
+            {/* Total Subjects Card */}
             <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 p-6 shadow-sm ring-1 ring-purple-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-purple-600">Attendance %</p>
-                  <p className="mt-2 text-3xl font-bold text-purple-900">{attendanceSummary.attendancePercentage.toFixed(1)}%</p>
+                  <p className="text-sm font-medium text-purple-600">Total Subjects</p>
+                  <p className="mt-2 text-3xl font-bold text-purple-900">{subjects.length}</p>
                 </div>
-                <div className="text-4xl">📊</div>
+                <div className="text-4xl">📚</div>
+              </div>
+            </div>
+
+            {/* Total Sections Card */}
+            <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 p-6 shadow-sm ring-1 ring-amber-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-amber-600">Total Sections</p>
+                  <p className="mt-2 text-3xl font-bold text-amber-900">{sections.length}</p>
+                </div>
+                <div className="text-4xl">🏫</div>
               </div>
             </div>
           </div>
-
-          {status.error && (
-            <div className="rounded-3xl bg-rose-50 p-4 text-rose-700 ring-1 ring-rose-200">{status.error}</div>
-          )}
-          {status.message && (
-            <div className="rounded-3xl bg-emerald-50 p-4 text-emerald-700 ring-1 ring-emerald-200">{status.message}</div>
-          )}
 
           <section id="students" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="text-2xl font-semibold">{editStudent ? "Edit Student" : "Add Student"}</h2>
@@ -639,7 +844,7 @@ const AdminDashboard = () => {
                       ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       : "border-slate-200 bg-slate-50"
                   }`}
-                  placeholder="e.g., John Doe"
+                  placeholder="Enter Name"
                   required={!editStudent}
                 />
                 {!editStudent && studentFormErrors.name && studentFormTouched.name && (
@@ -694,7 +899,7 @@ const AdminDashboard = () => {
                       ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       : "border-slate-200 bg-slate-50"
                   }`}
-                  placeholder="e.g., Maria Santos"
+                  placeholder="Enter Parent Name"
                   required={!editStudent}
                 />
                 {!editStudent && studentFormErrors.parentName && studentFormTouched.parentName && (
@@ -719,7 +924,7 @@ const AdminDashboard = () => {
                       ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                       : "border-slate-200 bg-slate-50"
                   }`}
-                  placeholder="e.g., parent_john"
+                  placeholder="Enter Parent Username"
                   required={!editStudent}
                 />
                 {!editStudent && studentFormErrors.parentUsername && studentFormTouched.parentUsername && (
@@ -756,7 +961,7 @@ const AdminDashboard = () => {
               <div className="sm:col-span-2 flex gap-2">
                 <button
                   type="submit"
-                  disabled={loading || (!editStudent && !isStudentFormValidPure(studentForm))}
+                  disabled={loading}
                   className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
                 >
                   {loading ? "Saving..." : editStudent ? "Update Student" : "Create Student"}
@@ -779,7 +984,21 @@ const AdminDashboard = () => {
             {/* Students Data Table */}
             <div className="mt-8">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Existing Students</h3>
+                <div className="flex items-center gap-4">
+                  <h3 className="text-lg font-semibold">Existing Students</h3>
+                  <select
+                    value={selectedSection}
+                    onChange={(e) => setSelectedSection(e.target.value)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">All Sections</option>
+                    {sections.map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <button
                   type="button"
                   onClick={fetchStudents}
@@ -788,9 +1007,18 @@ const AdminDashboard = () => {
                    Refresh
                 </button>
               </div>
-              {students.length === 0 ? (
+              <div className="mt-4">
+                <input
+                  type="text"
+                  placeholder="Search by name or student ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm"
+                />
+              </div>
+              {searchedStudents.length === 0 ? (
                 <div className="mt-4">
-                  <EmptyState icon="👤" title="No Students" description="Start by adding students to the system." />
+                  <EmptyState icon="👤" title="No Students" description={students.length === 0 ? "Start by adding students to the system." : "No students match your search criteria."} />
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
@@ -805,7 +1033,7 @@ const AdminDashboard = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200">
-                     {students.map((student) => (
+                     {paginatedStudents.map((student) => (
   <tr key={student.studentId} className="transition hover:bg-slate-50">
     <td className="px-6 py-4 text-slate-900">{student.studentId}</td>
     <td className="px-6 py-4 text-slate-900">{student.name}</td>
@@ -978,7 +1206,7 @@ const AdminDashboard = () => {
               <div className="sm:col-span-2">
                 <button
                   type="submit"
-                  disabled={loading || !subjectForm.name.trim()}
+                  disabled={loading}
                   className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400"
                 >
                   {loading ? "Saving..." : "Add Subject"}
@@ -1021,10 +1249,7 @@ const AdminDashboard = () => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                setDeleteSubject(subject);
-                                setDeleteWithAssignmentsPrompt(false);
-                              }}
+                              onClick={() => handleDeleteSubject(subject)}
                               className="rounded-lg bg-rose-100 px-3 py-1 text-sm font-medium text-rose-700 transition hover:bg-rose-200"
                             >
                               Delete
@@ -1056,36 +1281,94 @@ const AdminDashboard = () => {
                 <input
                   type="text"
                   value={editTeacher ? editTeacherData.name : teacherForm.name}
-                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, name: e.target.value })) : setTeacherForm((current) => ({ ...current, name: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required
+                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, name: e.target.value })) : handleTeacherInputChange("name", e.target.value)}
+                  onBlur={() => !editTeacher && handleTeacherFieldBlur("name")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editTeacher
+                      ? "border-slate-200 bg-slate-50"
+                      : teacherFormTouched.name && teacherFormErrors.name
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : teacherFormTouched.name && !teacherFormErrors.name
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
                 />
+                {!editTeacher && teacherFormTouched.name && teacherFormErrors.name && (
+                  <p className="mt-1 text-sm text-rose-600">{teacherFormErrors.name}</p>
+                )}
               </label>
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Username</span>
                 <input
                   type="text"
                   value={editTeacher ? editTeacherData.username : teacherForm.username}
-                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, username: e.target.value })) : setTeacherForm((current) => ({ ...current, username: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required
+                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, username: e.target.value })) : handleTeacherInputChange("username", e.target.value)}
+                  onBlur={() => !editTeacher && handleTeacherFieldBlur("username")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editTeacher
+                      ? "border-slate-200 bg-slate-50"
+                      : teacherFormTouched.username && teacherFormErrors.username
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : teacherFormTouched.username && !teacherFormErrors.username
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
                 />
+                {!editTeacher && teacherFormTouched.username && teacherFormErrors.username && (
+                  <p className="mt-1 text-sm text-rose-600">{teacherFormErrors.username}</p>
+                )}
               </label>
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">{editTeacher ? "Password (leave empty to keep current)" : "Password"}</span>
                 <input
                   type="password"
                   value={editTeacher ? editTeacherData.password : teacherForm.password}
-                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, password: e.target.value })) : setTeacherForm((current) => ({ ...current, password: e.target.value }))}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
-                  required={!editTeacher}
+                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, password: e.target.value })) : handleTeacherInputChange("password", e.target.value)}
+                  onBlur={() => !editTeacher && handleTeacherFieldBlur("password")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editTeacher
+                      ? "border-slate-200 bg-slate-50"
+                      : teacherFormTouched.password && teacherFormErrors.password
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : teacherFormTouched.password && !teacherFormErrors.password
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
                 />
+                {!editTeacher && teacherFormTouched.password && teacherFormErrors.password && (
+                  <p className="mt-1 text-sm text-rose-600">{teacherFormErrors.password}</p>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Email</span>
+                <input
+                  type="email"
+                  value={editTeacher ? editTeacherData.email : teacherForm.email}
+                  onChange={(e) => editTeacher ? setEditTeacherData((current) => ({ ...current, email: e.target.value })) : handleTeacherInputChange("email", e.target.value)}
+                  onBlur={() => !editTeacher && handleTeacherFieldBlur("email")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editTeacher
+                      ? "border-slate-200 bg-slate-50"
+                      : teacherFormTouched.email && teacherFormErrors.email
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : teacherFormTouched.email && !teacherFormErrors.email
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                />
+                {!editTeacher && teacherFormTouched.email && teacherFormErrors.email && (
+                  <p className="mt-1 text-sm text-rose-600">{teacherFormErrors.email}</p>
+                )}
               </label>
               <div className="sm:col-span-2 flex gap-2">
                 <button
                   type="submit"
                   disabled={loading}
-                  className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400"
+                  className={`rounded-2xl px-6 py-3 text-white transition ${
+                    loading
+                      ? "bg-slate-400 cursor-not-allowed"
+                      : "bg-sky-600 hover:bg-sky-700"
+                  }`}
                 >
                   {loading ? "Saving..." : editTeacher ? "Update Teacher" : "Create Teacher"}
                 </button>
@@ -1094,7 +1377,7 @@ const AdminDashboard = () => {
                     type="button"
                     onClick={() => {
                       setEditTeacher(null);
-                      setEditTeacherData({ name: "", username: "", password: "" });
+                      setEditTeacherData({ name: "", username: "", password: "", email: "" });
                     }}
                     className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-slate-700 transition hover:bg-slate-50"
                   >
@@ -1145,6 +1428,7 @@ const AdminDashboard = () => {
                                     name: teacher.name,
                                     username: teacher.username || "",
                                     password: "",
+                                    email: teacher.email || "",
                                   });
                                 }}
                                 className="rounded-lg bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-200"
@@ -1335,7 +1619,6 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Edit Subject Modal */}
       {editSubject && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
@@ -1354,7 +1637,7 @@ const AdminDashboard = () => {
               <div className="mt-6 flex gap-3">
                 <button
                   type="submit"
-                  disabled={loading || !editSubjectName.trim()}
+                  disabled={loading}
                   className="flex-1 rounded-2xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:bg-slate-400"
                 >
                   {loading ? "Saving..." : "Save"}
@@ -1374,72 +1657,9 @@ const AdminDashboard = () => {
             </form>
           </div>
         </div>
+
       )}
 
-      {/* Delete Subject Confirmation Dialog */}
-      {deleteSubject && !deleteWithAssignmentsPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
-            <h3 className="text-xl font-semibold text-slate-900">Delete Subject</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Are you sure you want to delete "{deleteSubject.name}"?
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => handleDeleteSubject(false)}
-                disabled={loading}
-                className="flex-1 rounded-2xl bg-rose-100 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:bg-slate-200"
-              >
-                {loading ? "Deleting..." : "Delete"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setDeleteSubject(null)}
-                disabled={loading}
-                className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete with Assignments Confirmation Dialog */}
-      {deleteSubject && deleteWithAssignmentsPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
-            <h3 className="text-xl font-semibold text-slate-900">Subject Has Assignments</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              This subject has assignments. Do you want to delete it along with all assignments?
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => handleDeleteSubject(true)}
-                disabled={loading}
-                className="flex-1 rounded-2xl bg-rose-100 px-4 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-200 disabled:bg-slate-200"
-              >
-                {loading ? "Deleting..." : "Delete with Assignments"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteSubject(null);
-                  setDeleteWithAssignmentsPrompt(false);
-                }}
-                disabled={loading}
-                className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Teacher Modal */}
       {editTeacher && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
@@ -1474,10 +1694,20 @@ const AdminDashboard = () => {
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
                 />
               </label>
+              <label className="mt-4 block">
+                <span className="text-sm font-medium text-slate-700">Email</span>
+                <input
+                  type="email"
+                  value={editTeacherData.email}
+                  onChange={(e) => setEditTeacherData((current) => ({ ...current, email: e.target.value }))}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"
+                  required
+                />
+              </label>
               <div className="mt-6 flex gap-3">
                 <button
                   type="submit"
-                  disabled={loading || !editTeacherData.name.trim()}
+                  disabled={loading}
                   className="flex-1 rounded-2xl bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-700 disabled:bg-slate-400"
                 >
                   {loading ? "Saving..." : "Save"}
@@ -1486,7 +1716,7 @@ const AdminDashboard = () => {
                   type="button"
                   onClick={() => {
                     setEditTeacher(null);
-                    setEditTeacherData({ name: "", username: "", password: "" });
+                    setEditTeacherData({ name: "", username: "", password: "", email: "" });
                   }}
                   disabled={loading}
                   className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:bg-slate-200"
@@ -1558,6 +1788,40 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
+
+      {deleteModal && (
+        <ConfirmationModal
+          title={deleteModal.title}
+          message={deleteModal.message}
+          onConfirm={deleteModal.onConfirm}
+          onCancel={deleteModal.onCancel}
+        />
+      )}
+    </div>
+  );
+};
+
+const ConfirmationModal = ({ title, message, onConfirm, onCancel }) => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-lg">
+        <h3 className="text-xl font-semibold text-slate-900">{title}</h3>
+        <p className="mt-4 text-slate-700">{message}</p>
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 rounded-2xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 rounded-2xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

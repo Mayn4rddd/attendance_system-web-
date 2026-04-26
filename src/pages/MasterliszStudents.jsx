@@ -4,6 +4,8 @@ import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
 import EmptyState from "../components/EmptyState";
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
 
 const MasterliszStudents = () => {
   const { sectionId } = useParams();
@@ -112,6 +114,225 @@ const MasterliszStudents = () => {
     } finally {
       setGridLoading(false);
     }
+  };
+
+  const handleExportExcel = () => {
+    if (!gridData.students.length || !gridData.dates.length) {
+      setStatus({ message: "", error: "No data available to export." });
+      return;
+    }
+
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet([]);
+
+    // Define styles
+    const titleStyle = {
+      font: { bold: true, sz: 16 },
+      alignment: { horizontal: "center" },
+      fill: { fgColor: { rgb: "FFE6F3FF" } }
+    };
+
+    const sectionStyle = {
+      font: { bold: true, sz: 12 },
+      alignment: { horizontal: "left" }
+    };
+
+    const dateRangeStyle = {
+      font: { sz: 11 },
+      alignment: { horizontal: "left" }
+    };
+
+    const headerStyle = {
+      font: { bold: true, sz: 11 },
+      alignment: { horizontal: "center" },
+      fill: { fgColor: { rgb: "FFD3D3D3" } },
+      border: {
+        top: { style: "thin", color: { rgb: "FF000000" } },
+        bottom: { style: "thin", color: { rgb: "FF000000" } },
+        left: { style: "thin", color: { rgb: "FF000000" } },
+        right: { style: "thin", color: { rgb: "FF000000" } }
+      }
+    };
+
+    const studentNameStyle = {
+      font: { bold: true, sz: 10 },
+      alignment: { horizontal: "left" },
+      border: {
+        top: { style: "thin", color: { rgb: "FF000000" } },
+        bottom: { style: "thin", color: { rgb: "FF000000" } },
+        left: { style: "thin", color: { rgb: "FF000000" } },
+        right: { style: "thin", color: { rgb: "FF000000" } }
+      }
+    };
+
+    const dateHeaderStyle = {
+      font: { bold: true, sz: 10 },
+      alignment: { horizontal: "center" },
+      fill: { fgColor: { rgb: "FFD3D3D3" } },
+      border: {
+        top: { style: "thin", color: { rgb: "FF000000" } },
+        bottom: { style: "thin", color: { rgb: "FF000000" } },
+        left: { style: "thin", color: { rgb: "FF000000" } },
+        right: { style: "thin", color: { rgb: "FF000000" } }
+      }
+    };
+
+    const presentStyle = {
+      font: { sz: 10 },
+      alignment: { horizontal: "center" },
+      fill: { fgColor: { rgb: "FFE8F5E8" } },
+      border: {
+        top: { style: "thin", color: { rgb: "FF000000" } },
+        bottom: { style: "thin", color: { rgb: "FF000000" } },
+        left: { style: "thin", color: { rgb: "FF000000" } },
+        right: { style: "thin", color: { rgb: "FF000000" } }
+      }
+    };
+
+    const lateStyle = {
+      font: { sz: 10 },
+      alignment: { horizontal: "center" },
+      fill: { fgColor: { rgb: "FFFFF3E0" } },
+      border: {
+        top: { style: "thin", color: { rgb: "FF000000" } },
+        bottom: { style: "thin", color: { rgb: "FF000000" } },
+        left: { style: "thin", color: { rgb: "FF000000" } },
+        right: { style: "thin", color: { rgb: "FF000000" } }
+      }
+    };
+
+    const absentStyle = {
+      font: { sz: 10 },
+      alignment: { horizontal: "center" },
+      fill: { fgColor: { rgb: "FFFFEBEE" } },
+      border: {
+        top: { style: "thin", color: { rgb: "FF000000" } },
+        bottom: { style: "thin", color: { rgb: "FF000000" } },
+        left: { style: "thin", color: { rgb: "FF000000" } },
+        right: { style: "thin", color: { rgb: "FF000000" } }
+      }
+    };
+
+    const emptyStyle = {
+      font: { sz: 10 },
+      alignment: { horizontal: "center" },
+      fill: { fgColor: { rgb: "FFF5F5F5" } },
+      border: {
+        top: { style: "thin", color: { rgb: "FF000000" } },
+        bottom: { style: "thin", color: { rgb: "FF000000" } },
+        left: { style: "thin", color: { rgb: "FF000000" } },
+        right: { style: "thin", color: { rgb: "FF000000" } }
+      }
+    };
+
+    // Add title (centered across columns)
+    XLSX.utils.sheet_add_aoa(ws, [["Student Masterlist"]], { origin: "A1" });
+    ws['A1'].s = titleStyle;
+
+    // Add section name
+    XLSX.utils.sheet_add_aoa(ws, [[`Section: ${sectionName || 'N/A'}`]], { origin: "A3" });
+    ws['A3'].s = sectionStyle;
+
+    // Add date range
+    const dateRange = `From: ${new Date(startDate).toLocaleDateString()} To: ${new Date(endDate).toLocaleDateString()}`;
+    XLSX.utils.sheet_add_aoa(ws, [[dateRange]], { origin: "A4" });
+    ws['A4'].s = dateRangeStyle;
+
+    // Create headers: Student Name + dates
+    const headers = ["Student Name", ...gridData.dates.map(date =>
+      new Date(date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        weekday: 'short'
+      })
+    )];
+
+    // Add headers starting from row 6
+    XLSX.utils.sheet_add_aoa(ws, [headers], { origin: "A6" });
+
+    // Apply header styles
+    headers.forEach((header, index) => {
+      const cellRef = XLSX.utils.encode_cell({ r: 5, c: index }); // Row 6 (0-indexed as 5)
+      if (index === 0) {
+        ws[cellRef].s = headerStyle; // Student Name header
+      } else {
+        ws[cellRef].s = dateHeaderStyle; // Date headers
+      }
+    });
+
+    // Create data rows
+    const dataRows = gridData.students.map(student => {
+      const row = [student.studentName || 'N/A'];
+
+      // Add attendance data for each date
+      gridData.dates.forEach(date => {
+        const status = student.records?.[date] || "";
+        let displayValue = "-";
+
+        if (status === "P") {
+          displayValue = "Present";
+        } else if (status === "L") {
+          displayValue = "Late";
+        } else if (status === "A") {
+          displayValue = "Absent";
+        }
+
+        row.push(displayValue);
+      });
+
+      return row;
+    });
+
+    // Add data rows starting from row 7
+    XLSX.utils.sheet_add_aoa(ws, dataRows, { origin: "A7" });
+
+    // Apply data cell styles
+    dataRows.forEach((row, rowIndex) => {
+      row.forEach((cell, colIndex) => {
+        const cellRef = XLSX.utils.encode_cell({ r: rowIndex + 6, c: colIndex }); // Start from row 7 (0-indexed as 6)
+
+        if (colIndex === 0) {
+          // Student name column
+          ws[cellRef].s = studentNameStyle;
+        } else {
+          // Attendance columns
+          const status = row[colIndex];
+          if (status === "Present") {
+            ws[cellRef].s = presentStyle;
+          } else if (status === "Late") {
+            ws[cellRef].s = lateStyle;
+          } else if (status === "Absent") {
+            ws[cellRef].s = absentStyle;
+          } else {
+            ws[cellRef].s = emptyStyle;
+          }
+        }
+      });
+    });
+
+    // Set column widths
+    const colWidths = [
+      { wch: 25 }, // Student Name
+      ...gridData.dates.map(() => ({ wch: 12 })) // Date columns
+    ];
+    ws['!cols'] = colWidths;
+
+    // Merge title cell across all columns
+    const totalColumns = headers.length;
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: totalColumns - 1 } } // Merge A1 to last column in row 1
+    ];
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Student Masterlist");
+
+    // Generate filename with section and date range
+    const fileName = `Student_Masterlist_${sectionName || 'Unknown'}_${startDate}_to_${endDate}.xlsx`;
+
+    // Write and save file
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([wbout], { type: 'application/octet-stream' }), fileName);
   };
 
   useEffect(() => {
@@ -413,13 +634,23 @@ const MasterliszStudents = () => {
           )}
           
           <div className="border-t border-slate-200 px-6 py-4">
-            <button
-              type="button"
-              onClick={() => navigate("/teacher/masterlist")}
-              className="rounded-2xl border-2 border-slate-300 bg-white px-6 py-2 text-slate-700 transition hover:bg-slate-50"
-            >
-              Back to Masterlist
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={!gridData.students.length || !gridData.dates.length}
+                className="rounded-2xl bg-green-600 px-6 py-2 text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                Export to Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/teacher/masterlist")}
+                className="rounded-2xl border-2 border-slate-300 bg-white px-6 py-2 text-slate-700 transition hover:bg-slate-50"
+              >
+                Back to Masterlist
+              </button>
+            </div>
           </div>
         </section>
       </div>
