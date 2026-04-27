@@ -86,9 +86,9 @@ const validateTeacherPassword = (value) => {
 };
 
 const AdminDashboard = () => {
-  const [studentForm, setStudentForm] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
-  const [studentFormErrors, setStudentFormErrors] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
-  const [studentFormTouched, setStudentFormTouched] = useState({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false });
+  const [studentForm, setStudentForm] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "", parentEmail: "" });
+  const [studentFormErrors, setStudentFormErrors] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "", parentEmail: "" });
+  const [studentFormTouched, setStudentFormTouched] = useState({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false, parentEmail: false });
   const [sectionForm, setSectionForm] = useState({ name: "" });
   const [subjectForm, setSubjectForm] = useState({ name: "" });
   const [teacherForm, setTeacherForm] = useState({ name: "", username: "", password: "", email: "" });
@@ -117,7 +117,7 @@ const AdminDashboard = () => {
   const [deleteTeacher, setDeleteTeacher] = useState(null);
   
   const [editStudent, setEditStudent] = useState(null);
-  const [editStudentData, setEditStudentData] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
+  const [editStudentData, setEditStudentData] = useState({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "", parentEmail: "" });
   const [deleteStudent, setDeleteStudent] = useState(null);
 
   const [deleteModal, setDeleteModal] = useState(null);
@@ -196,6 +196,7 @@ const AdminDashboard = () => {
       parentName: validateParentName(formData.parentName),
       parentUsername: validateParentUsername(formData.parentUsername),
       parentPassword: validateParentPassword(formData.parentPassword),
+      parentEmail: validateEmail(formData.parentEmail),
     };
 
     if (!errors.studentId && isDuplicateStudentId(formData.studentId)) {
@@ -284,6 +285,7 @@ const AdminDashboard = () => {
       else if (field === "parentName") error = validateParentName(processedValue);
       else if (field === "parentUsername") error = validateParentUsername(processedValue);
       else if (field === "parentPassword") error = validateParentPassword(processedValue);
+      else if (field === "parentEmail") error = validateEmail(processedValue);
 
       setStudentFormErrors((current) => ({ ...current, [field]: error }));
     }
@@ -301,6 +303,7 @@ const AdminDashboard = () => {
     else if (field === "parentName") error = validateParentName(studentForm.parentName);
     else if (field === "parentUsername") error = validateParentUsername(studentForm.parentUsername);
     else if (field === "parentPassword") error = validateParentPassword(studentForm.parentPassword);
+    else if (field === "parentEmail") error = validateEmail(studentForm.parentEmail);
 
     setStudentFormErrors((current) => ({ ...current, [field]: error }));
   };
@@ -384,7 +387,7 @@ const AdminDashboard = () => {
     const errors = getStudentFormErrors(studentForm);
     if (Object.values(errors).some((error) => error !== "")) {
       setStudentFormErrors(errors);
-      setStudentFormTouched({ studentId: true, name: true, sectionId: true, parentName: true, parentUsername: true, parentPassword: true });
+      setStudentFormTouched({ studentId: true, name: true, sectionId: true, parentName: true, parentUsername: true, parentPassword: true, parentEmail: true });
       toast.error("Please fix the highlighted fields before submitting.");
       return;
     }
@@ -396,15 +399,16 @@ const AdminDashboard = () => {
       parentName: studentForm.parentName.trim(),
       parentUsername: studentForm.parentUsername.trim(),
       parentPassword: studentForm.parentPassword,
+      parentEmail: studentForm.parentEmail.trim(),
     }, "Student created successfully.");
 
     if (!response.success) {
       return;
     }
 
-    setStudentForm({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
-    setStudentFormErrors({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
-    setStudentFormTouched({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false });
+    setStudentForm({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "", parentEmail: "" });
+    setStudentFormErrors({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "", parentEmail: "" });
+    setStudentFormTouched({ studentId: false, name: false, sectionId: false, parentName: false, parentUsername: false, parentPassword: false, parentEmail: false });
     fetchStudents();
   };
 
@@ -709,10 +713,11 @@ const AdminDashboard = () => {
         parentName: editStudentData.parentName,
         parentUsername: editStudentData.parentUsername,
         parentPassword: editStudentData.parentPassword,
+        parentEmail: editStudentData.parentEmail,
       });
       toast.success("Student updated successfully.");
       setEditStudent(null);
-      setEditStudentData({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
+      setEditStudentData({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "", parentEmail: "" });
       fetchStudents();
     } catch (error) {
       console.error("Update failed:", error);
@@ -748,56 +753,46 @@ const AdminDashboard = () => {
         <Sidebar links={navigationSections} />
 
         <main className="flex-1 space-y-6">
-          <header className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <h1 className="text-3xl font-semibold">Admin Dashboard</h1>
-            <p className="mt-2 text-sm text-slate-600">Manage students, sections, teachers, and assignments.</p>
-          </header>
+          <section className="mx-auto w-full max-w-4xl space-y-6">
+            <header className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-200">
+              <h1 className="text-3xl font-semibold">Admin Dashboard</h1>
+              <p className="mt-2 text-sm text-slate-600">Manage students, sections, teachers, and assignments.</p>
+            </header>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Total Students Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 p-6 shadow-sm ring-1 ring-blue-200">
-              <div className="flex items-center justify-between">
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+              {/* Total Students Card */}
+              <div className="rounded-[1.75rem] bg-gradient-to-br from-sky-50 via-sky-100 to-sky-200 p-6 shadow-lg ring-1 ring-sky-100">
                 <div>
-                  <p className="text-sm font-medium text-blue-600">Total Students</p>
-                  <p className="mt-2 text-3xl font-bold text-blue-900">{students.length}</p>
+                  <p className="text-sm font-medium text-sky-600">Total Students</p>
+                  <p className="mt-4 text-3xl font-semibold text-sky-900">{students.length}</p>
                 </div>
-                <div className="text-4xl">👥</div>
               </div>
-            </div>
 
-            {/* Total Teachers Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 shadow-sm ring-1 ring-emerald-200">
-              <div className="flex items-center justify-between">
+              {/* Total Teachers Card */}
+              <div className="rounded-[1.75rem] bg-gradient-to-br from-emerald-50 via-emerald-100 to-emerald-200 p-6 shadow-lg ring-1 ring-emerald-100">
                 <div>
                   <p className="text-sm font-medium text-emerald-600">Total Teachers</p>
-                  <p className="mt-2 text-3xl font-bold text-emerald-900">{teachers.length}</p>
+                  <p className="mt-4 text-3xl font-semibold text-emerald-900">{teachers.length}</p>
                 </div>
-                <div className="text-4xl">👨‍🏫</div>
               </div>
-            </div>
 
-            {/* Total Subjects Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-purple-50 to-purple-100 p-6 shadow-sm ring-1 ring-purple-200">
-              <div className="flex items-center justify-between">
+              {/* Total Subjects Card */}
+              <div className="rounded-[1.75rem] bg-gradient-to-br from-violet-50 via-violet-100 to-violet-200 p-6 shadow-lg ring-1 ring-violet-100">
                 <div>
-                  <p className="text-sm font-medium text-purple-600">Total Subjects</p>
-                  <p className="mt-2 text-3xl font-bold text-purple-900">{subjects.length}</p>
+                  <p className="text-sm font-medium text-violet-600">Total Subjects</p>
+                  <p className="mt-4 text-3xl font-semibold text-violet-900">{subjects.length}</p>
                 </div>
-                <div className="text-4xl">📚</div>
               </div>
-            </div>
 
-            {/* Total Sections Card */}
-            <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-amber-100 p-6 shadow-sm ring-1 ring-amber-200">
-              <div className="flex items-center justify-between">
+              {/* Total Sections Card */}
+              <div className="rounded-[1.75rem] bg-gradient-to-br from-amber-50 via-amber-100 to-amber-200 p-6 shadow-lg ring-1 ring-amber-100">
                 <div>
                   <p className="text-sm font-medium text-amber-600">Total Sections</p>
-                  <p className="mt-2 text-3xl font-bold text-amber-900">{sections.length}</p>
+                  <p className="mt-4 text-3xl font-semibold text-amber-900">{sections.length}</p>
                 </div>
-                <div className="text-4xl">🏫</div>
               </div>
             </div>
-          </div>
+          </section>
 
           <section id="students" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="text-2xl font-semibold">{editStudent ? "Edit Student" : "Add Student"}</h2>
@@ -957,6 +952,31 @@ const AdminDashboard = () => {
                 )}
               </label>
 
+              {/* Parent Email */}
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">Parent Email</span>
+                <input
+                  type="email"
+                  value={editStudent ? editStudentData.parentEmail : studentForm.parentEmail}
+                  onChange={(e) => editStudent ? setEditStudentData((current) => ({ ...current, parentEmail: e.target.value })) : handleStudentInputChange("parentEmail", e.target.value)}
+                  onBlur={() => !editStudent && handleStudentFieldBlur("parentEmail")}
+                  className={`mt-2 w-full rounded-2xl border px-4 py-3 transition ${
+                    editStudent
+                      ? "border-slate-200 bg-slate-50"
+                      : studentFormErrors.parentEmail && studentFormTouched.parentEmail
+                      ? "border-rose-500 bg-rose-50 focus:ring-2 focus:ring-rose-500 focus:border-transparent"
+                      : !studentFormErrors.parentEmail && studentFormTouched.parentEmail && studentForm.parentEmail.trim()
+                      ? "border-emerald-500 bg-emerald-50 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      : "border-slate-200 bg-slate-50"
+                  }`}
+                  placeholder="Enter Parent Email"
+                  required={!editStudent}
+                />
+                {!editStudent && studentFormErrors.parentEmail && studentFormTouched.parentEmail && (
+                  <p className="mt-1 text-sm text-rose-600">{studentFormErrors.parentEmail}</p>
+                )}
+              </label>
+
               {/* Submit Buttons */}
               <div className="sm:col-span-2 flex gap-2">
                 <button
@@ -971,7 +991,7 @@ const AdminDashboard = () => {
                     type="button"
                     onClick={() => {
                       setEditStudent(null);
-                      setEditStudentData({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "" });
+                      setEditStudentData({ studentId: "", name: "", sectionId: "", parentName: "", parentUsername: "", parentPassword: "", parentEmail: "" });
                     }}
                     className="rounded-2xl border border-slate-300 bg-white px-6 py-3 text-slate-700 transition hover:bg-slate-50"
                   >
@@ -999,13 +1019,7 @@ const AdminDashboard = () => {
                     ))}
                   </select>
                 </div>
-                <button
-                  type="button"
-                  onClick={fetchStudents}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                   Refresh
-                </button>
+                
               </div>
               <div className="mt-4">
                 <input
@@ -1056,6 +1070,7 @@ const AdminDashboard = () => {
               parentName: student.parentName || "",
               parentUsername: student.parentUsername || "",
               parentPassword: "",
+              parentEmail: student.parentEmail || "",
             });
           }}
           className="rounded-lg bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 transition hover:bg-blue-200"
@@ -1083,13 +1098,7 @@ const AdminDashboard = () => {
           <section id="sections" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-semibold">{editSection ? "Edit Section" : "Create Section"}</h2>
-              <button
-                type="button"
-                onClick={fetchSections}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                Refresh
-              </button>
+              
             </div>
             <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={editSection ? handleEditSection : handleSectionCreate}>
               <label className="block sm:col-span-2">
@@ -1184,13 +1193,7 @@ const AdminDashboard = () => {
               <div>
                 <h2 className="text-2xl font-semibold">Create Subject</h2>
               </div>
-              <button
-                type="button"
-                onClick={fetchSubjects}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                 Refresh
-              </button>
+             
             </div>
             <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={handleSubjectCreate}>
               <label className="block sm:col-span-2">
@@ -1267,13 +1270,7 @@ const AdminDashboard = () => {
           <section id="teachers" className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-semibold">{editTeacher ? "Edit Teacher" : "Create Teacher"}</h2>
-              <button
-                type="button"
-                onClick={fetchTeachers}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                Refresh
-              </button>
+          
             </div>
             <form className="mt-5 grid gap-4 sm:grid-cols-2" onSubmit={editTeacher ? handleEditTeacher : handleTeacherCreate}>
               <label className="block">
@@ -1391,13 +1388,7 @@ const AdminDashboard = () => {
             <div className="mt-8">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold">Existing Teachers</h3>
-                <button
-                  type="button"
-                  onClick={fetchTeachers}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                >
-                  Refresh
-                </button>
+                
               </div>
               {teachers.length === 0 ? (
                 <div className="mt-4">
