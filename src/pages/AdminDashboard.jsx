@@ -1032,7 +1032,7 @@ const AdminDashboard = () => {
               </div>
               {searchedStudents.length === 0 ? (
                 <div className="mt-4">
-                  <EmptyState icon="👤" title="No Students" description={students.length === 0 ? "Start by adding students to the system." : "No students match your search criteria."} />
+                  <EmptyState icon="" title="No Students" description={students.length === 0 ? "Start by adding students to the system." : "No students match your search criteria."} />
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
@@ -1139,7 +1139,7 @@ const AdminDashboard = () => {
               <h3 className="text-lg font-semibold">Existing Sections</h3>
               {sections.length === 0 ? (
                 <div className="mt-4">
-                  <EmptyState icon="📚" title="No Sections" description="Create sections before adding students and teachers." />
+                  <EmptyState icon="" title="No Sections" description="Create sections before adding students and teachers." />
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
@@ -1222,7 +1222,7 @@ const AdminDashboard = () => {
               <h3 className="text-lg font-semibold">Existing Subjects</h3>
               {subjects.length === 0 ? (
                 <div className="mt-4">
-                  <EmptyState icon="📖" title="No Subjects" description="Start by creating subjects for your institution." />
+                  <EmptyState icon="" title="No Subjects" description="Start by creating subjects for your institution." />
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
@@ -1392,7 +1392,7 @@ const AdminDashboard = () => {
               </div>
               {teachers.length === 0 ? (
                 <div className="mt-4">
-                  <EmptyState icon="👨‍🏫" title="No Teachers" description="Create teachers and assign them to sections." />
+                  <EmptyState icon="" title="No Teachers" description="Create teachers and assign them to sections." />
                 </div>
               ) : (
                 <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
