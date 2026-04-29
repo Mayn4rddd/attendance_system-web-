@@ -28,6 +28,9 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [sectionsLoading, setSectionsLoading] = useState(false);
   const [isClassTimeActive, setIsClassTimeActive] = useState(true);
+  const [isSessionClosed, setIsSessionClosed] = useState(false);
+  const isSessionActive = session && !isSessionClosed;
+  const [hasExpiredActionsRun, setHasExpiredActionsRun] = useState(false);
 
   // Helper function to convert backend errors to user-friendly messages
   const getFriendlyErrorMessage = (backendError) => {
@@ -40,6 +43,9 @@ const TeacherDashboard = () => {
       "Teacher assignment not found": "Teacher assignment not found. Please contact your administrator.",
       "Class time is over": "Class time has ended. Attendance is no longer available.",
       "Attendance session expired": "QR session has expired. Generate a new session.",
+      "Session already closed": "This attendance session has already been closed.",
+      "No active QR session": "No active QR session found. Generate a new QR session first.",
+      "Too far from classroom": "You are too far from the classroom to generate attendance.",
       "Unauthorized": "You are not authorized to perform this action.",
     };
 
@@ -335,35 +341,51 @@ const TeacherDashboard = () => {
 
 
   useEffect(() => {
-  let intervalId;
+    let intervalId;
 
-  if (session?.expiresAt) {
-    const updateCountdown = () => {
-      const expiresAt = new Date(session.expiresAt).getTime();
+    if (session?.expiresAt) {
+      const updateCountdown = () => {
+        const expiresAt = new Date(session.expiresAt).getTime();
 
-      if (isNaN(expiresAt)) {
-        console.error("Invalid expiresAt:", session.expiresAt);
-        return;
+        if (isNaN(expiresAt)) {
+          console.error("Invalid expiresAt:", session.expiresAt);
+          return;
+        }
+
+        const seconds = Math.max(
+          0,
+          Math.floor((expiresAt - Date.now()) / 1000)
+        );
+
+        const isClosed = !!session?.isClosed;
+        const isExpired = seconds <= 0;
+
+        setCountdown(seconds);
+        setIsSessionClosed(isClosed);
+
+        if (seconds <= 0) {
+          clearInterval(intervalId);
+        }
+      };
+
+      updateCountdown(); // run immediately
+      intervalId = setInterval(updateCountdown, 1000);
+    } else {
+      setCountdown(0);
+    }
+
+    return () => clearInterval(intervalId);
+  }, [session]);
+
+  useEffect(() => {
+    if (countdown === 0 && session && attendanceSessionId && !hasExpiredActionsRun) {
+      setHasExpiredActionsRun(true);
+      fetchAttendance();
+      if (selectedSection) {
+        fetchMasterlist(selectedSection);
       }
-
-      const seconds = Math.max(
-        0,
-        Math.floor((expiresAt - Date.now()) / 1000)
-      );
-
-      setCountdown(seconds);
-
-      if (seconds <= 0) {
-        clearInterval(intervalId);
-      }
-    };
-
-    updateCountdown(); // run immediately
-    intervalId = setInterval(updateCountdown, 1000);
-  }
-
-  return () => clearInterval(intervalId);
-}, [session]);
+    }
+  }, [countdown, session, attendanceSessionId, selectedSection, hasExpiredActionsRun]);
 
   useEffect(() => {
     if (!attendanceSessionId) return;
@@ -422,20 +444,25 @@ const TeacherDashboard = () => {
         const expiresAt = new Date(activeSession.expiresAt).getTime();
         const now = Date.now();
         const secondsRemaining = Math.floor((expiresAt - now) / 1000);
+        const isClosed = !!activeSession.isClosed;
 
-        // Always restore the session, regardless of expiration status
-        // The backend controls validity, frontend just displays what's returned
         console.log("[Active QR] Restoring session with", secondsRemaining, "seconds remaining (may be expired)");
         setSession(activeSession);
         setAttendanceSessionId(activeSession.attendanceSessionId);
         setAttendance([]);
         setNewlyScanned(new Set());
+        setIsSessionClosed(isClosed);
+        setHasExpiredActionsRun(false);
         setStatus({ message: "Restored active QR session.", error: "" });
         return;
       }
     } catch (error) {
       if (error.response?.status === 404) {
         console.log("[Active QR] No active QR session found");
+        setSession(null);
+        setAttendanceSessionId(null);
+        setIsSessionClosed(false);
+        setStatus({ message: "", error: getFriendlyErrorMessage("No active QR session") });
       } else {
         const errorMsg = getErrorMessage(error);
         console.error("[Active QR] Error fetching active session:", errorMsg);
@@ -447,6 +474,11 @@ const TeacherDashboard = () => {
   const handleGenerate = async () => {
     if (loading) return;
     
+    if (isSessionClosed) {
+      setStatus({ message: "", error: "Cannot generate QR because the current session is closed." });
+      return;
+    }
+
     // Validate required fields
     if (!user?.userId) {
       setStatus({ message: "", error: "User ID is missing. Please refresh and try again." });
@@ -512,6 +544,8 @@ const TeacherDashboard = () => {
       setAttendanceSessionId(response.data?.attendanceSessionId);
       setAttendance([]);
       setNewlyScanned(new Set());
+      setIsSessionClosed(false);
+      setHasExpiredActionsRun(false);
       setStatus({ message: "QR session generated successfully.", error: "" });
       
       // Refresh masterlist to show current attendance status
@@ -535,10 +569,52 @@ const TeacherDashboard = () => {
     }
   };
 
+  const handleCloseSession = async () => {
+    if (loading) return;
+    if (!attendanceSessionId) {
+      setStatus({ message: "", error: "No active QR session to close." });
+      return;
+    }
+
+    const sectionId = selectedSection?.id || selectedSection?.sectionId;
+    const subjectId = selectedSection?.subjectId;
+    const teacherId = selectedSection?.teacherId ?? selectedSection?.teacher?.id;
+
+    setLoading(true);
+    setStatus({ message: "", error: "" });
+
+    try {
+      await api.post("/attendance/close-session", null, {
+        params: { sectionId, subjectId, teacherId }
+      });
+      setSession(prev => ({ ...(prev || {}), isClosed: true }));
+      setIsSessionClosed(true);
+      setStatus({ message: "Session closed successfully.", error: "" });
+      await fetchAttendance();
+      if (selectedSection) {
+        await fetchMasterlist(selectedSection);
+      }
+    } catch (error) {
+      const errorMsg = getErrorMessage(error, "Failed to close session.");
+      console.error("[Close Session] Error:", errorMsg);
+      setStatus({ message: "", error: getFriendlyErrorMessage(errorMsg) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleManualAttendanceSubmit = async (studentDbId, statusValue) => {
-    // Prevent duplicate/spam clicks and if class is over
+    // Prevent duplicate/spam clicks and if class is over or no active session exists
     // NOTE: studentDbId is the database ID (student.id), NOT studentId (student number)
-    if (manualLoading || !isClassTimeActive || manualAttendance[studentDbId] === statusValue) return;
+    if (manualLoading || !isClassTimeActive || !session || session.isClosed ) {
+      setManualStatus({
+        message: "",
+        error: "Manual attendance requires an active QR session.",
+      });
+      return;
+    }
+
+    if (manualAttendance[studentDbId] === statusValue) return;
     
     if (!selectedSection || !statusValue) return;
     
@@ -853,7 +929,7 @@ const TeacherDashboard = () => {
               <div className="flex gap-3">
                 <button
                   type="button"
-                  disabled={loading || !isClassTimeActive}
+                  disabled={loading || !isClassTimeActive || isSessionClosed}
                   onClick={handleGenerate}
                   className="rounded-2xl bg-sky-600 px-6 py-3 text-white transition hover:bg-sky-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
                 >
@@ -882,13 +958,21 @@ const TeacherDashboard = () => {
                     {/* Status Badge */}
                     <div className="flex items-center justify-center">
                       <span className={`inline-flex rounded-full px-4 py-2 text-sm font-semibold ${
-                        countdown > 0
+                        isSessionClosed
+                          ? 'bg-rose-100 text-rose-800'
+                          : countdown > 0
                           ? 'bg-emerald-100 text-emerald-800'
                           : 'bg-rose-100 text-rose-800'
                       }`}>
-                        {countdown > 0 ? 'Active' : 'Expired'}
+                        {isSessionClosed ? 'Closed' : countdown > 0 ? 'Active' : 'Expired'}
                       </span>
                     </div>
+
+                    {isSessionClosed && (
+                      <div className="rounded-2xl bg-rose-50 p-4 text-rose-700 ring-1 ring-rose-200">
+                        <p className="text-sm font-semibold">Session Closed. QR and manual attendance are disabled.</p>
+                      </div>
+                    )}
 
                     {/* QR Code */}
                     <div className="flex justify-center">
@@ -930,11 +1014,19 @@ const TeacherDashboard = () => {
                     {/* Regenerate Button */}
                     <button
                       type="button"
-                      disabled={loading}
+                      disabled={loading || isSessionClosed}
                       onClick={handleGenerate}
                       className="w-full rounded-2xl border-2 border-sky-600 bg-white px-4 py-2 text-sm font-medium text-sky-600 transition hover:bg-sky-50 disabled:border-slate-400 disabled:text-slate-400"
                     >
                       {loading ? 'Regenerating...' : 'Regenerate QR'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading || isSessionClosed}
+                      onClick={handleCloseSession}
+                      className="w-full rounded-2xl border-2 border-rose-600 bg-white px-4 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 disabled:border-slate-400 disabled:text-slate-400"
+                    >
+                      Close Session
                     </button>
                   </div>
                 ) : (
@@ -1011,6 +1103,18 @@ const TeacherDashboard = () => {
               </button>
             </div>
 
+            {!isSessionActive && !isSessionClosed && (
+              <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-amber-700 ring-1 ring-amber-200">
+                <p className="text-sm font-semibold">Manual attendance requires an active QR session.</p>
+              </div>
+            )}
+
+            {isSessionClosed && (
+              <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
+                <p className="text-sm font-semibold text-rose-700">Session Closed. Manual attendance is disabled.</p>
+              </div>
+            )}
+
             {!isClassTimeActive && (
               <div className="mt-4 rounded-2xl bg-rose-50 p-4 ring-1 ring-rose-200">
                 <p className="text-sm font-semibold text-rose-700">Class time is over. Attendance is closed.</p>
@@ -1062,7 +1166,7 @@ const TeacherDashboard = () => {
                           <button
                             key={status.label}
                             type="button"
-                            disabled={manualLoading || !isClassTimeActive}
+                            disabled={manualLoading || !isClassTimeActive || !session || isSessionClosed}
                             onClick={() => handleManualAttendanceSubmit(student.id, status.label)}
                             style={{
                               backgroundColor: manualAttendance[student.id] === status.label ? status.bgSelected : status.bgUnselected,

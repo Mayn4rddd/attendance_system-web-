@@ -157,7 +157,7 @@ const Masterlisz = () => {
                   const id = section.id ?? section.sectionId;
                   return (
                     <button
-                      key={id}
+                      key={`${id}-${section.subjectId}`}
                       type="button"
                       onClick={() => handleSectionClick(section)}
                       className="rounded-3xl border border-slate-200 bg-white p-6 text-left transition hover:border-slate-400 hover:shadow-md"
